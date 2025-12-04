@@ -2,7 +2,7 @@ from flask import render_template, request, redirect, url_for
 from flask_login import login_required, current_user
 from . import bp
 from ..extensions import db
-from ..models import User, Role, Setting
+from ..models import User, Role, Setting, CollectionItem, CollectionDetail
 
 def is_admin():
     return current_user.is_authenticated and current_user.role and current_user.role.name == 'admin'
@@ -63,3 +63,61 @@ def settings():
         db.session.commit()
         return redirect(url_for('admin.settings'))
     return render_template('admin/settings.html', setting=s)
+
+@bp.route('/collect', methods=['GET'])
+@login_required
+def collect_page():
+    return render_template('admin/collect.html')
+
+@bp.route('/collect/save', methods=['POST'])
+@login_required
+def collect_save():
+    data = request.get_json(silent=True) or {}
+    items = data.get('items') or []
+    saved = 0
+    for it in items:
+        url = it.get('url')
+        if not url:
+            continue
+        exists = db.session.query(CollectionItem).filter_by(url=url).first()
+        if exists:
+            exists.title = it.get('title') or exists.title
+            exists.cover = it.get('cover') or exists.cover
+            exists.source = it.get('source') or exists.source
+            exists.keyword = it.get('keyword') or exists.keyword
+        else:
+            obj = CollectionItem(
+                title=it.get('title') or '',
+                cover=it.get('cover'),
+                url=url,
+                source=it.get('source'),
+                keyword=it.get('keyword'),
+            )
+            db.session.add(obj)
+        saved += 1
+    db.session.commit()
+    return {'saved': saved}
+
+@bp.route('/collect/deep', methods=['POST'])
+@login_required
+def collect_deep():
+    url = request.json.get('url')
+    keyword = request.json.get('keyword')
+    item = db.session.query(CollectionItem).filter_by(url=url).first()
+    if item is None:
+        item = CollectionItem(title=request.json.get('title') or '', cover=request.json.get('cover'), url=url, source=request.json.get('source'), keyword=keyword)
+        db.session.add(item)
+        db.session.commit()
+    import requests
+    from bs4 import BeautifulSoup
+    try:
+        r = requests.get(url, timeout=10)
+        soup = BeautifulSoup(r.text, 'lxml')
+        text = soup.get_text('\n', strip=True)
+        det = CollectionDetail(item_id=item.id, content_text=text, content_html=r.text)
+        db.session.add(det)
+        item.deep_status = True
+        db.session.commit()
+        return {'status': 'ok', 'item_id': item.id, 'detail_id': det.id}
+    except Exception as e:
+        return {'status': 'error', 'message': str(e)}, 500

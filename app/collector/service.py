@@ -66,10 +66,6 @@ def fetch_baidu_news(keyword: str, limit: int = 20, pn: int = 0):
             href = a['href']
             if href in seen:
                 continue
-            summary = ''
-            summ_el = c.select_one('.c-span-last, .content, .c-summary, .news-summary, p')
-            if summ_el:
-                summary = summ_el.get_text(' ', strip=True)
             img = c.find('img')
             cover = None
             if img:
@@ -77,7 +73,6 @@ def fetch_baidu_news(keyword: str, limit: int = 20, pn: int = 0):
             source = _extract_source(c)
             items.append({
                 'title': title,
-                'summary': summary,
                 'cover': cover,
                 'url': href,
                 'source': source,

@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="layui-row layui-col-space16">
+  <div class="layui-col-md12">
+    <div class="layui-card">
+      <div class="layui-card-header">数据采集管理</div>
+      <div class="layui-card-body">
+        <form class="layui-form" id="collect-form">
+          <div class="layui-form-item">
+            <label class="layui-form-label">关键字</label>
+            <div class="layui-input-inline" style="width:280px">
+              <input type="text" name="keyword" required class="layui-input" placeholder="请输入关键字">
+            </div>
+            <label class="layui-form-label">起始pn</label>
+            <div class="layui-input-inline" style="width:140px">
+              <input type="number" name="pn" value="0" class="layui-input">
+            </div>
+            <label class="layui-form-label">数量</label>
+            <div class="layui-input-inline" style="width:140px">
+              <input type="number" name="limit" value="30" class="layui-input">
+            </div>
+            <div class="layui-input-inline">
+              <button type="button" class="layui-btn" id="btn-start">开始采集</button>
+            </div>
+            <div class="layui-input-inline">
+              <button type="button" class="layui-btn layui-btn-primary" id="btn-save-selected">存储选中</button>
+            </div>
+          </div>
+        </form>
+        <div class="layui-progress" lay-filter="collect-progress" lay-showpercent="true" style="margin:10px 0">
+          <div class="layui-progress-bar" lay-percent="0%"></div>
+        </div>
+        <div id="results" class="layui-row layui-col-space16"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+function initCollectPage(){
+  layui.use(['element','layer'], function(){
+  var $ = layui.$, element = layui.element, layer = layui.layer;
+  var items = [];
+  function cardHtml(it){
+    var status = it.deep_status ? '已执行' : '未执行';
+    var cover = it.cover ? it.cover : '';
+    return (
+      '<div class="layui-col-md4">' +
+        '<div class="layui-card">' +
+          '<div class="layui-card-body">' +
+            '<input type="checkbox" class="select-item" data-url="'+ (it.url||'') +'" style="margin-bottom:8px"> 选择' +
+            (cover ? ('<a href="'+ it.url +'" target="_blank"><img src="'+ cover +'" style="width:100%;height:160px;object-fit:cover"></a>') : '') +
+            '<div class="layui-text" style="margin-top:8px;font-weight:600">'+ (it.title||'') +'</div>' +
+            '<div class="layui-text" style="color:#777">'+ (it.source||'') +'</div>' +
+            '<div style="margin-top:8px">' +
+              '<span class="layui-badge ' + (it.deep_status?'':'layui-bg-gray') +'">深度采集：'+ status +'</span>' +
+              '<button class="layui-btn layui-btn-sm" data-action="deep" data-url="'+ (it.url||'') +'" data-title="'+ (it.title||'') +'" data-cover="'+ (it.cover||'') +'" data-source="'+ (it.source||'') +'" style="float:right">深度采集</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+  function render(){
+    var html = items.map(cardHtml).join('');
+    $('#results').html(html);
+  }
+  function updateProgress(done,total){
+    var percent = total ? Math.min(100, Math.round(done*100/total)) : 0;
+    element.progress('collect-progress', percent + '%');
+  }
+  function saveSelected(keyword){
+    var toSave = [];
+    $('.select-item:checked').each(function(){
+      var url = $(this).data('url');
+      var it = items.find(function(x){ return x.url===url; });
+      if(it){ toSave.push(Object.assign({}, it, {keyword: keyword})); }
+    });
+    if(toSave.length===0){ layer.msg('未选择数据'); return; }
+    $.ajax({
+      url: '{{ url_for('admin.collect_save') }}',
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({items: toSave}),
+      success: function(res){ layer.msg('已保存 '+ res.saved +' 条'); },
+      error: function(){ layer.msg('保存失败'); }
+    });
+  }
+  $('#btn-save-selected').on('click', function(){
+    var kw = $('input[name=keyword]').val();
+    saveSelected(kw);
+  });
+  $('#results').on('click','button[data-action=deep]', function(){
+    var btn = $(this);
+    var payload = {
+      url: btn.data('url'),
+      title: btn.data('title'),
+      cover: btn.data('cover'),
+      source: btn.data('source'),
+      keyword: $('input[name=keyword]').val()
+    };
+    btn.attr('disabled', true);
+    $.ajax({
+      url: '{{ url_for('admin.collect_deep') }}',
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify(payload),
+      success: function(){
+        var url = payload.url;
+        items = items.map(function(x){ if(x.url===url){ x.deep_status = true; } return x; });
+        render();
+        layer.msg('深度采集完成');
+      },
+      error: function(){ layer.msg('深度采集失败'); },
+      complete: function(){ btn.attr('disabled', false); }
+    });
+  });
+  $('#btn-start').on('click', function(){
+    items = [];
+    render();
+    element.progress('collect-progress', '0%');
+    var kw = $('input[name=keyword]').val();
+    var pn = parseInt($('input[name=pn]').val()||0);
+    var limit = parseInt($('input[name=limit]').val()||30);
+    var step = 10;
+    var done = 0;
+    function fetchOnce(currentPn, currentLimit, cb){
+      $.getJSON('/api/collect', { q: kw, limit: currentLimit, pn: currentPn }, function(res){
+        if(res && res.items){ items = items.concat(res.items); render(); }
+        done += currentLimit; updateProgress(Math.min(done, limit), limit);
+        cb();
+      }).fail(function(){ cb(); });
+    }
+    var currPn = pn;
+    function loop(){
+      if(done >= limit){ return; }
+      var left = limit - done;
+      var take = left > step ? step : left;
+      fetchOnce(currPn, take, function(){ currPn += 10; loop(); });
+    }
+    loop();
+  });
+  });
+}
+if (window.layui) { initCollectPage(); } else { window.addEventListener('load', initCollectPage); }
+</script>
+{% endblock %}

@@ -23,3 +23,21 @@ class Setting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     app_name = db.Column(db.String(128), nullable=False, default='政企智能舆情分析报告生成')
     logo_path = db.Column(db.String(256))
+
+class CollectionItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(512), nullable=False)
+    cover = db.Column(db.String(512))
+    url = db.Column(db.String(1024), unique=True, nullable=False)
+    source = db.Column(db.String(256))
+    keyword = db.Column(db.String(128))
+    deep_status = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+class CollectionDetail(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(db.Integer, db.ForeignKey('collection_item.id'), nullable=False)
+    content_text = db.Column(db.Text)
+    content_html = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+    item = db.relationship('CollectionItem')
