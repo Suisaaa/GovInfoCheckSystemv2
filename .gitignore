@@ -1,1 +1,15 @@
-/venv
+venv/
+.env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.mypy_cache/
+.pytest_cache/
+.cache/
+.DS_Store
+govinfo.db
+*.db
+instance/
+*.sqlite
