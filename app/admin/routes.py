@@ -1,8 +1,9 @@
-from flask import render_template, request, redirect, url_for
+from flask import render_template, request, redirect, url_for, jsonify
 from flask_login import login_required, current_user
 from . import bp
 from ..extensions import db
 from ..models import User, Role, Setting, CollectionItem, CollectionDetail
+from ..collector.service import _headers_with_cookie
 
 def is_admin():
     return current_user.is_authenticated and current_user.role and current_user.role.name == 'admin'
@@ -111,13 +112,47 @@ def collect_deep():
     import requests
     from bs4 import BeautifulSoup
     try:
-        r = requests.get(url, timeout=10)
+        r = requests.get(url, headers=_headers_with_cookie(), timeout=15)
+        final_url = r.url
         soup = BeautifulSoup(r.text, 'lxml')
-        text = soup.get_text('\n', strip=True)
-        det = CollectionDetail(item_id=item.id, content_text=text, content_html=r.text)
+        for tag in soup(['script','style','noscript']):
+            tag.extract()
+        selectors = [
+            'article',
+            '.article',
+            '.article-content',
+            '#article',
+            '.content',
+            '#content',
+            '.news-content',
+            '.post-content',
+            '.detail',
+            '.wrap .content'
+        ]
+        best = None
+        best_len = 0
+        for sel in selectors:
+            el = soup.select_one(sel)
+            if el:
+                txt = el.get_text('\n', strip=True)
+                if len(txt) > best_len:
+                    best = el
+                    best_len = len(txt)
+        if best is None:
+            ps = soup.select('p')
+            if ps:
+                txt = '\n'.join([p.get_text(' ', strip=True) for p in ps])
+            else:
+                txt = soup.get_text('\n', strip=True)
+        else:
+            txt = best.get_text('\n', strip=True)
+        if txt:
+            txt = txt[:20000]
+        det = CollectionDetail(item_id=item.id, content_text=txt, content_html=r.text, final_url=final_url)
         db.session.add(det)
         item.deep_status = True
         db.session.commit()
-        return {'status': 'ok', 'item_id': item.id, 'detail_id': det.id}
+        preview = (txt or '')[:600]
+        return jsonify({'status': 'ok', 'item_id': item.id, 'detail_id': det.id, 'preview': preview, 'final_url': final_url})
     except Exception as e:
-        return {'status': 'error', 'message': str(e)}, 500
+        return jsonify({'status': 'error', 'message': str(e)}), 500

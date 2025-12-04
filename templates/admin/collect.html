@@ -35,9 +35,10 @@
     </div>
   </div>
 </div>
+{% block page_scripts %}
 <script>
-function initCollectPage(){
-  layui.use(['element','layer'], function(){
+window.addEventListener('load', function(){
+layui.use(['element','layer'], function(){
   var $ = layui.$, element = layui.element, layer = layui.layer;
   var items = [];
   function cardHtml(it){
@@ -104,11 +105,13 @@ function initCollectPage(){
       method: 'POST',
       contentType: 'application/json',
       data: JSON.stringify(payload),
-      success: function(){
+      success: function(res){
         var url = payload.url;
         items = items.map(function(x){ if(x.url===url){ x.deep_status = true; } return x; });
         render();
-        layer.msg('深度采集完成');
+        var html = '<div class="layui-text" style="max-height:360px;overflow:auto">'+ (res.preview||'') +'</div>'+
+                   (res.final_url ? '<div style="margin-top:8px"><a href="'+ res.final_url +'" target="_blank" class="layui-btn layui-btn-sm">原文链接</a></div>' : '');
+        layer.open({ title:'深度采集预览', area:['520px','460px'], content: html });
       },
       error: function(){ layer.msg('深度采集失败'); },
       complete: function(){ btn.attr('disabled', false); }
@@ -139,8 +142,8 @@ function initCollectPage(){
     }
     loop();
   });
-  });
-}
-if (window.layui) { initCollectPage(); } else { window.addEventListener('load', initCollectPage); }
+});
+});
 </script>
+{% endblock %}
 {% endblock %}

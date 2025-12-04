@@ -39,5 +39,6 @@ class CollectionDetail(db.Model):
     item_id = db.Column(db.Integer, db.ForeignKey('collection_item.id'), nullable=False)
     content_text = db.Column(db.Text)
     content_html = db.Column(db.Text)
+    final_url = db.Column(db.String(1024))
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     item = db.relationship('CollectionItem')
