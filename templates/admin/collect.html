@@ -11,9 +11,16 @@
             <div class="layui-input-inline" style="width:280px">
               <input type="text" name="keyword" required class="layui-input" placeholder="请输入关键字">
             </div>
-            <label class="layui-form-label">起始pn</label>
+            <label class="layui-form-label">来源</label>
+            <div class="layui-input-inline" style="width:160px">
+              <select name="source">
+                <option value="baidu" selected>百度新闻</option>
+                <option value="xinhua">新华网</option>
+              </select>
+            </div>
+            <label class="layui-form-label">最大页数</label>
             <div class="layui-input-inline" style="width:140px">
-              <input type="number" name="pn" value="0" class="layui-input">
+              <input type="number" name="max_pages" value="5" class="layui-input">
             </div>
             <label class="layui-form-label">数量</label>
             <div class="layui-input-inline" style="width:140px">
@@ -38,8 +45,9 @@
 {% block page_scripts %}
 <script>
 window.addEventListener('load', function(){
-layui.use(['element','layer'], function(){
-  var $ = layui.$, element = layui.element, layer = layui.layer;
+layui.use(['element','layer','form'], function(){
+  var $ = layui.$, element = layui.element, layer = layui.layer, form = layui.form;
+  form.render();
   var items = [];
   function cardHtml(it){
     var status = it.deep_status ? '已执行' : '未执行';
@@ -122,25 +130,35 @@ layui.use(['element','layer'], function(){
     render();
     element.progress('collect-progress', '0%');
     var kw = $('input[name=keyword]').val();
-    var pn = parseInt($('input[name=pn]').val()||0);
+    var src = $('select[name=source]').val() || 'baidu';
+    var maxPages = parseInt($('input[name=max_pages]').val()||5);
     var limit = parseInt($('input[name=limit]').val()||30);
     var step = 10;
     var done = 0;
-    function fetchOnce(currentPn, currentLimit, cb){
-      $.getJSON('/api/collect', { q: kw, limit: currentLimit, pn: currentPn }, function(res){
-        if(res && res.items){ items = items.concat(res.items); render(); }
-        done += currentLimit; updateProgress(Math.min(done, limit), limit);
-        cb();
-      }).fail(function(){ cb(); });
+    var pagesDone = 0;
+    if(src === 'xinhua'){
+      $.getJSON('/api/collect/xinhua', { q: kw, limit: limit }, function(res){
+        if(res && res.items){ items = res.items; render(); }
+        updateProgress(100, 100);
+      }).fail(function(){ layer.msg('采集失败'); });
+    } else {
+      function fetchOnce(currentPn, currentLimit, cb){
+        $.getJSON('/api/collect', { q: kw, limit: currentLimit, pn: currentPn }, function(res){
+          if(res && res.items){ items = items.concat(res.items); render(); }
+          done += currentLimit; updateProgress(Math.min(done, limit), limit);
+          pagesDone += 1;
+          cb();
+        }).fail(function(){ cb(); });
+      }
+      var currPn = 0;
+      function loop(){
+        if(done >= limit || pagesDone >= maxPages){ return; }
+        var left = limit - done;
+        var take = left > step ? step : left;
+        fetchOnce(currPn, take, function(){ currPn += 10; loop(); });
+      }
+      loop();
     }
-    var currPn = pn;
-    function loop(){
-      if(done >= limit){ return; }
-      var left = limit - done;
-      var take = left > step ? step : left;
-      fetchOnce(currPn, take, function(){ currPn += 10; loop(); });
-    }
-    loop();
   });
 });
 });

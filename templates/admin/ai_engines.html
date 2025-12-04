@@ -1,0 +1,145 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="layui-row layui-col-space16">
+  <div class="layui-col-md12">
+    <div class="layui-card">
+      <div class="layui-card-header">AI 引擎管理</div>
+      <div class="layui-card-body">
+        <form class="layui-form" id="engine-form">
+          <div class="layui-form-item">
+            <label class="layui-form-label">服务商</label>
+            <div class="layui-input-inline" style="width:200px">
+              <input type="text" name="provider" class="layui-input" placeholder="如: OpenAI / Moonshot / Azure">
+            </div>
+            <label class="layui-form-label">API URL</label>
+            <div class="layui-input-inline" style="width:320px">
+              <input type="text" name="api_url" class="layui-input" placeholder="如: https://api.openai.com/v1/chat/completions">
+            </div>
+            <label class="layui-form-label">模型名称</label>
+            <div class="layui-input-inline" style="width:220px">
+              <input type="text" name="model_name" class="layui-input" placeholder="如: gpt-4o / qwen2.5">
+            </div>
+            <div class="layui-input-inline" style="width:220px">
+              <input type="checkbox" name="enabled" title="启用" checked>
+            </div>
+          </div>
+          <div class="layui-form-item">
+            <label class="layui-form-label">API Key</label>
+            <div class="layui-input-block">
+              <input type="text" name="api_key" class="layui-input" placeholder="仅新增或更新时填写">
+            </div>
+          </div>
+          <div class="layui-form-item">
+            <div class="layui-input-block">
+              <button type="button" class="layui-btn" id="btn-add">新增引擎</button>
+              <button type="button" class="layui-btn layui-btn-danger" id="btn-delete-selected">删除选中</button>
+            </div>
+          </div>
+        </form>
+
+        <div class="layui-row" id="engine-grid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block page_scripts %}
+<script>
+layui.use(['element','layer'], function(){
+  var $ = layui.$, layer = layui.layer;
+  var page = 1, size = 12, total = 0, rows = [];
+
+  function cardHtml(x){
+    var badge = x.enabled ? '<span class="layui-badge layui-bg-green">启用</span>' : '<span class="layui-badge">停用</span>';
+    var ak = x.api_key_mask ? x.api_key_mask : '未设置';
+    return (
+      '<div class="layui-col-md3 layui-col-sm6" style="margin-bottom:16px">'+
+        '<div class="layui-card" style="border-radius:12px; box-shadow:0 6px 18px rgba(0,0,0,0.08); overflow:hidden">'+
+          '<div class="layui-card-header" style="background:linear-gradient(135deg,#4f46e5,#06b6d4); color:#fff; font-weight:600">'
+            + x.provider + ' · ' + x.model_name +
+            '<span style="float:right">'+ badge +'</span>'+
+          '</div>'+
+          '<div class="layui-card-body" style="padding:16px">'+
+            '<input type="checkbox" class="select-row" data-id="'+ x.id +'" title="选择">'+
+            '<div style="margin-top:8px">'+
+              '<div style="margin-bottom:8px"><span class="layui-badge">API</span> '+ x.api_url +'</div>'+
+              '<div style="margin-bottom:8px"><span class="layui-badge layui-bg-orange">Key</span> '+ ak +'</div>'+
+            '</div>'+
+            '<div style="margin-top:12px">'+
+              '<div class="layui-form" style="margin-bottom:8px">'+
+                '<input type="text" class="layui-input edit-provider" data-id="'+ x.id +'" placeholder="服务商" value="'+ (x.provider||'') +'" style="margin-bottom:8px">'+
+                '<input type="text" class="layui-input edit-api_url" data-id="'+ x.id +'" placeholder="API URL" value="'+ (x.api_url||'') +'" style="margin-bottom:8px">'+
+                '<input type="text" class="layui-input edit-model_name" data-id="'+ x.id +'" placeholder="模型名称" value="'+ (x.model_name||'') +'" style="margin-bottom:8px">'+
+                '<input type="text" class="layui-input edit-api_key" data-id="'+ x.id +'" placeholder="更新时填写新的 API Key" style="margin-bottom:8px">'+
+                '<input type="checkbox" class="edit-enabled" data-id="'+ x.id +'" '+ (x.enabled?'checked':'') +' title="启用">'+
+              '</div>'+
+              '<button class="layui-btn layui-btn-sm" data-action="save" data-id="'+ x.id +'">保存</button> '
+              + '<button class="layui-btn layui-btn-danger layui-btn-sm" data-action="delete" data-id="'+ x.id +'">删除</button>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>'
+    );
+  }
+
+  function render(){
+    var html = rows.map(cardHtml).join('');
+    $('#engine-grid').html(html);
+  }
+  function load(){
+    $.getJSON('{{ url_for('admin.ai_engines_list') }}', { page: page, size: size }, function(res){
+      page = res.page; size = res.size; total = res.total; rows = res.items || [];
+      render();
+    });
+  }
+
+  $('#btn-add').on('click', function(){
+    var provider = $('input[name=provider]').val();
+    var api_url = $('input[name=api_url]').val();
+    var model_name = $('input[name=model_name]').val();
+    var enabled = $('input[name=enabled]').is(':checked');
+    var api_key = $('input[name=api_key]').val();
+    $.ajax({ url: '{{ url_for('admin.ai_engines_create') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ provider: provider, api_url: api_url, model_name: model_name, enabled: enabled, api_key: api_key }),
+      success: function(){ layer.msg('新增成功'); $('input[name=provider]').val(''); $('input[name=api_url]').val(''); $('input[name=model_name]').val(''); $('input[name=api_key]').val(''); load(); },
+      error: function(xhr){ layer.msg('新增失败: '+ (xhr.responseJSON && xhr.responseJSON.error || '')); }
+    });
+  });
+
+  $('#engine-grid').on('click','button[data-action=save]', function(){
+    var id = $(this).data('id');
+    var provider = $('.edit-provider[data-id='+id+']').val();
+    var api_url = $('.edit-api_url[data-id='+id+']').val();
+    var model_name = $('.edit-model_name[data-id='+id+']').val();
+    var api_key = $('.edit-api_key[data-id='+id+']').val();
+    var enabled = $('.edit-enabled[data-id='+id+']').is(':checked');
+    $.ajax({ url: '{{ url_for('admin.ai_engines_update') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ id: id, provider: provider, api_url: api_url, model_name: model_name, api_key: api_key, enabled: enabled }),
+      success: function(){ layer.msg('保存成功'); load(); }, error: function(xhr){ layer.msg('保存失败: '+ (xhr.responseJSON && xhr.responseJSON.error || '')); }
+    });
+  });
+
+  $('#engine-grid').on('click','button[data-action=delete]', function(){
+    var id = $(this).data('id');
+    layer.confirm('确认删除该引擎？', function(index){
+      $.ajax({ url: '{{ url_for('admin.ai_engines_delete') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ id: id }),
+        success: function(){ layer.msg('删除成功'); load(); }, error: function(){ layer.msg('删除失败'); }
+      });
+      layer.close(index);
+    });
+  });
+
+  $('#btn-delete-selected').on('click', function(){
+    var ids = [];
+    $('.select-row:checked').each(function(){ ids.push($(this).data('id')); });
+    if(ids.length===0){ layer.msg('未选择'); return; }
+    layer.confirm('确认删除选中的 '+ ids.length +' 个引擎？', function(index){
+      $.ajax({ url: '{{ url_for('admin.ai_engines_delete') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: ids }),
+        success: function(){ layer.msg('删除成功'); load(); }, error: function(){ layer.msg('删除失败'); }
+      });
+      layer.close(index);
+    });
+  });
+
+  load();
+});
+</script>
+{% endblock %}

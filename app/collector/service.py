@@ -114,14 +114,20 @@ def fetch_xinhua_sichuan(keyword: str | None = None, limit: int = 20):
                 continue
             cover = None
             p = a.parent
-            if p:
-                img = p.find('img')
-                if img:
-                    cover = img.get('src') or img.get('data-src') or img.get('data-original')
-                    if cover and cover.startswith('//'):
-                        cover = 'https:' + cover
-                    elif cover and cover.startswith('/'):
-                        cover = urljoin(base, cover)
+            img = a.find('img') or (p.find('img') if p else None)
+            if img is None and p and p.parent:
+                img = p.parent.find('img')
+            if img:
+                c = img.get('src') or img.get('data-src') or img.get('data-original') or img.get('data-ori') or img.get('data-original-src')
+                if c:
+                    if c.startswith('//'):
+                        cover = 'https:' + c
+                    elif c.startswith('/'):
+                        cover = urljoin(base, c)
+                    elif not re.match(r'^https?://', c):
+                        cover = urljoin(base, c)
+                    else:
+                        cover = c
             source = '新华网'
             item = {
                 'title': title,

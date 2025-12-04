@@ -1,0 +1,176 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="layui-row layui-col-space16">
+  <div class="layui-col-md12">
+    <div class="layui-card">
+      <div class="layui-card-header">数据仓库管理</div>
+      <div class="layui-card-body">
+        <form class="layui-form" id="query-form">
+          <div class="layui-form-item">
+            <label class="layui-form-label">搜索</label>
+            <div class="layui-input-inline" style="width:280px">
+              <input type="text" name="q" class="layui-input" placeholder="标题/来源">
+            </div>
+            <div class="layui-input-inline">
+              <button type="button" class="layui-btn" id="btn-search">查询</button>
+            </div>
+            <div class="layui-input-inline">
+              <button type="button" class="layui-btn layui-btn-danger" id="btn-delete-selected">删除选中</button>
+            </div>
+            <div class="layui-input-inline">
+              <button type="button" class="layui-btn" id="btn-deep-selected">详细内容采集（选中）</button>
+            </div>
+            <div class="layui-input-inline">
+              <button type="button" class="layui-btn layui-btn-primary" id="btn-ai-analyze">AI解析（预留）</button>
+            </div>
+          </div>
+        </form>
+        <table class="layui-table" id="warehouse-table">
+          <thead>
+            <tr>
+              <th style="width:40px"><input type="checkbox" id="select-all"></th>
+              <th>封面</th>
+              <th>标题</th>
+              <th>来源</th>
+              <th>匹配规则</th>
+              <th>关键字</th>
+              <th>深度</th>
+              <th>链接</th>
+              <th style="width:220px">操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block page_scripts %}
+<script>
+layui.use(['element','layer'], function(){
+  var $ = layui.$, layer = layui.layer;
+  var page = 1, size = 10, total = 0, rows = [];
+  function rowHtml(x){
+    var cover = x.cover ? ('<img src="'+ x.cover +'" style="width:80px;height:60px;object-fit:cover">') : '';
+    var deep = x.deep_status ? '已执行' : '未执行';
+    var matched = (x.matched_rules && x.matched_rules.length > 0) ? 
+                  '<span class="layui-badge layui-bg-green" title="'+ x.matched_rules.join(', ') +'">'+ x.matched_rules.length +'个</span>' : 
+                  '<span class="layui-badge layui-bg-gray">无</span>';
+    return (
+      '<tr>'+
+      '<td><input type="checkbox" class="select-row" data-id="'+ x.id +'"></td>'+
+      '<td>'+ cover +'</td>'+
+      '<td><input type="text" class="layui-input edit-title" data-id="'+ x.id +'" value="'+ (x.title||'') +'"/></td>'+
+      '<td><input type="text" class="layui-input edit-source" data-id="'+ x.id +'" value="'+ (x.source||'') +'"/></td>'+
+      '<td>'+ matched +'</td>'+
+      '<td><input type="text" class="layui-input edit-keyword" data-id="'+ x.id +'" value="'+ (x.keyword||'') +'"/></td>'+
+      '<td>'+ deep +'</td>'+
+      '<td><a href="'+ x.url +'" target="_blank">打开</a></td>'+
+      '<td>'+
+        '<button class="layui-btn layui-btn-sm" data-action="save" data-id="'+ x.id +'">保存</button> '+
+        '<button class="layui-btn layui-btn-normal layui-btn-sm" data-action="deep" data-id="'+ x.id +'">详细采集</button> '+
+        (x.deep_status ? '<button class="layui-btn layui-btn-warm layui-btn-sm" data-action="preview" data-id="'+ x.id +'">预览</button> ' : '') +
+        '<button class="layui-btn layui-btn-danger layui-btn-sm" data-action="delete" data-id="'+ x.id +'">删除</button>'+
+      '</td>'+
+      '</tr>'
+    );
+  }
+  function render(){
+    var html = rows.map(rowHtml).join('');
+    $('#warehouse-table tbody').html(html);
+  }
+  function load(){
+    var q = $('input[name=q]').val();
+    $.getJSON('{{ url_for('admin.warehouse_list') }}', { page: page, size: size, q: q }, function(res){
+      page = res.page; size = res.size; total = res.total; rows = res.items || [];
+      render();
+    });
+  }
+  $('#btn-search').on('click', function(){ page = 1; load(); });
+  $('#select-all').on('change', function(){
+    var checked = $(this).is(':checked');
+    $('.select-row').prop('checked', checked);
+  });
+  $('#warehouse-table').on('click', 'button[data-action=save]', function(){
+    var id = $(this).data('id');
+    var title = $('.edit-title[data-id='+id+']').val();
+    var source = $('.edit-source[data-id='+id+']').val();
+    var keyword = $('.edit-keyword[data-id='+id+']').val();
+    $.ajax({
+      url: '{{ url_for('admin.warehouse_update') }}',
+      method: 'POST', contentType: 'application/json',
+      data: JSON.stringify({ id: id, title: title, source: source, keyword: keyword }),
+      success: function(){ layer.msg('保存成功'); load(); },
+      error: function(){ layer.msg('保存失败'); }
+    });
+  });
+  $('#warehouse-table').on('click', 'button[data-action=delete]', function(){
+    var id = $(this).data('id');
+    layer.confirm('确认删除该条数据？', function(index){
+      $.ajax({ url: '{{ url_for('admin.warehouse_delete') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ id: id }),
+        success: function(){ layer.msg('删除成功'); load(); }, error: function(){ layer.msg('删除失败'); }
+      });
+      layer.close(index);
+    });
+  });
+  $('#btn-deep-selected').on('click', function(){
+    var ids = [];
+    $('.select-row:checked').each(function(){ ids.push($(this).data('id')); });
+    if(ids.length===0){ layer.msg('未选择数据'); return; }
+    layer.msg('正在采集选中的 '+ ids.length +' 条...', {time: 800});
+    $.ajax({
+      url: '{{ url_for('admin.warehouse_deep_collect') }}',
+      method: 'POST', contentType: 'application/json',
+      data: JSON.stringify({ ids: ids }),
+      success: function(res){
+        layer.msg('采集完成：'+ (res.count||0) +' 条');
+        load();
+      },
+      error: function(){ layer.msg('采集失败'); }
+    });
+  });
+  $('#warehouse-table').on('click', 'button[data-action=deep]', function(){
+    var id = $(this).data('id');
+    layer.msg('正在采集详细内容...', {time: 800});
+    $.ajax({
+      url: '{{ url_for('admin.warehouse_deep_collect') }}',
+      method: 'POST', contentType: 'application/json',
+      data: JSON.stringify({ id: id }),
+      success: function(){ layer.msg('采集完成'); load(); },
+      error: function(){ layer.msg('采集失败'); }
+    });
+  });
+  $('#warehouse-table').on('click', 'button[data-action=preview]', function(){
+    var id = $(this).data('id');
+    layer.open({
+      type: 2,
+      title: '内容预览',
+      shadeClose: true,
+      shade: 0.8,
+      area: ['1000px', '90%'],
+      content: '/admin/warehouse/detail/' + id
+    });
+  });
+  $('#btn-delete-selected').on('click', function(){
+    var ids = [];
+    $('.select-row:checked').each(function(){ ids.push($(this).data('id')); });
+    if(ids.length===0){ layer.msg('未选择数据'); return; }
+    layer.confirm('确认删除选中的 '+ ids.length +' 条？', function(index){
+      $.ajax({ url: '{{ url_for('admin.warehouse_delete') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: ids }),
+        success: function(){ layer.msg('删除成功'); load(); }, error: function(){ layer.msg('删除失败'); }
+      });
+      layer.close(index);
+    });
+  });
+  $('#btn-ai-analyze').on('click', function(){
+    var ids = [];
+    $('.select-row:checked').each(function(){ ids.push($(this).data('id')); });
+    $.ajax({ url: '{{ url_for('admin.warehouse_analyze') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: ids }),
+      success: function(res){ layer.msg(res.message || 'AI解析入口'); }, error: function(){ layer.msg('请求失败'); }
+    });
+  });
+  load();
+});
+</script>
+{% endblock %}

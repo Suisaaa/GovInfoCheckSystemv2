@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="layui-row layui-col-space16">
+  <div class="layui-col-md12">
+    <div class="layui-card">
+      <div class="layui-card-header">采集规则库</div>
+      <div class="layui-card-body">
+        <form class="layui-form" id="rule-form">
+          <div class="layui-form-item">
+            <label class="layui-form-label">站点名称</label>
+            <div class="layui-input-inline" style="width:220px">
+              <input type="text" name="name" class="layui-input" placeholder="如: 新华网">
+            </div>
+            <label class="layui-form-label">域名</label>
+            <div class="layui-input-inline" style="width:220px">
+              <input type="text" name="site" class="layui-input" placeholder="如: sc.news.cn 或 www.news.cn">
+            </div>
+            <label class="layui-form-label">标题XPath</label>
+            <div class="layui-input-inline" style="width:220px">
+              <input type="text" name="title_xpath" class="layui-input" placeholder="//h1">
+            </div>
+            <label class="layui-form-label">内容XPath</label>
+            <div class="layui-input-inline" style="width:220px">
+              <input type="text" name="content_xpath" class="layui-input" placeholder="//article">
+            </div>
+            <div class="layui-input-inline" style="width:220px">
+              <input type="checkbox" name="enabled" title="启用" checked>
+            </div>
+          </div>
+          <div class="layui-form-item">
+            <label class="layui-form-label">Headers(JSON)</label>
+            <div class="layui-input-block">
+              <textarea name="request_headers" class="layui-textarea" placeholder='{"User-Agent":"..."}' style="height:100px"></textarea>
+            </div>
+          </div>
+          <div class="layui-form-item">
+            <div class="layui-input-block">
+              <button type="button" class="layui-btn" id="btn-add">新增规则</button>
+              <button type="button" class="layui-btn layui-btn-warm" id="btn-update">修改规则</button>
+              <button type="button" class="layui-btn layui-btn-danger" id="btn-delete-selected">删除规则</button>
+            </div>
+          </div>
+        </form>
+
+        <table class="layui-table" id="rules-table">
+          <thead>
+            <tr>
+              <th style="width:40px"><input type="checkbox" id="select-all"></th>
+              <th>站点名称</th>
+              <th>域名</th>
+              <th>标题XPath</th>
+              <th>内容XPath</th>
+              <th>Headers(JSON)</th>
+              <th>启用</th>
+              <th style="width:180px">操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block page_scripts %}
+<script>
+layui.use(['element','layer','form'], function(){
+  var $ = layui.$, layer = layui.layer, form = layui.form;
+  var page = 1, size = 10, total = 0, rows = [];
+  function rowHtml(x){
+    return (
+      '<tr>'+
+      '<td><input type="checkbox" class="select-row" data-id="'+ x.id +'"></td>'+
+      '<td><input type="text" class="layui-input edit-name" data-id="'+ x.id +'" value="'+ (x.name||'') +'"/></td>'+
+      '<td><input type="text" class="layui-input edit-site" data-id="'+ x.id +'" value="'+ (x.site||'') +'"/></td>'+
+      '<td><input type="text" class="layui-input edit-title" data-id="'+ x.id +'" value="'+ (x.title_xpath||'') +'"/></td>'+
+      '<td><input type="text" class="layui-input edit-content" data-id="'+ x.id +'" value="'+ (x.content_xpath||'') +'"/></td>'+
+      '<td><textarea class="layui-textarea edit-headers" data-id="'+ x.id +'" style="height:80px">'+ (x.request_headers||'') +'</textarea></td>'+
+      '<td><input type="checkbox" class="edit-enabled" data-id="'+ x.id +'" '+ (x.enabled?'checked':'') +'></td>'+
+      '<td>'+
+        '<button class="layui-btn layui-btn-warm layui-btn-sm" data-action="copy" data-id="'+ x.id +'">复制</button> '+
+        '<button class="layui-btn layui-btn-sm" data-action="save" data-id="'+ x.id +'">保存</button> '+
+        '<button class="layui-btn layui-btn-danger layui-btn-sm" data-action="delete" data-id="'+ x.id +'">删除</button>'+
+      '</td>'+
+      '</tr>'
+    );
+  }
+  function render(){
+    var html = rows.map(rowHtml).join('');
+    $('#rules-table tbody').html(html);
+  }
+  function load(){
+    $.getJSON('{{ url_for('admin.rules_list') }}', { page: page, size: size }, function(res){
+      page = res.page; size = res.size; total = res.total; rows = res.items || [];
+      render();
+    });
+  }
+  $('#select-all').on('change', function(){
+    var checked = $(this).is(':checked');
+    $('.select-row').prop('checked', checked);
+  });
+  $('#btn-update').on('click', function(){
+    var checked = $('.select-row:checked');
+    if(checked.length !== 1){ layer.msg('请勾选一条规则进行修改'); return; }
+    var id = checked.first().data('id');
+    var name = $('input[name=name]').val();
+    var site = $('input[name=site]').val();
+    var title_xpath = $('input[name=title_xpath]').val();
+    var content_xpath = $('input[name=content_xpath]').val();
+    var enabled = $('input[name=enabled]').is(':checked');
+    var headers = $('textarea[name=request_headers]').val();
+    $.ajax({ url: '{{ url_for('admin.rules_update') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ id: id, name: name, site: site, title_xpath: title_xpath, content_xpath: content_xpath, request_headers: headers, enabled: enabled }),
+      success: function(){ layer.msg('修改成功'); load(); }, error: function(xhr){ layer.msg('修改失败: '+ (xhr.responseJSON && xhr.responseJSON.error || '')); }
+    });
+  });
+  $('#btn-delete-selected').on('click', function(){
+    var ids = [];
+    $('.select-row:checked').each(function(){ ids.push($(this).data('id')); });
+    if(ids.length===0){ layer.msg('未选择规则'); return; }
+    layer.confirm('确认删除选中的 '+ ids.length +' 条规则？', function(index){
+      $.ajax({ url: '{{ url_for('admin.rules_delete') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ ids: ids }),
+        success: function(){ layer.msg('删除成功'); load(); }, error: function(){ layer.msg('删除失败'); }
+      });
+      layer.close(index);
+    });
+  });
+  $('#btn-add').on('click', function(){
+    var name = $('input[name=name]').val();
+    var site = $('input[name=site]').val();
+    var title_xpath = $('input[name=title_xpath]').val();
+    var content_xpath = $('input[name=content_xpath]').val();
+    var enabled = $('input[name=enabled]').is(':checked');
+    var headers = $('textarea[name=request_headers]').val();
+    $.ajax({ url: '{{ url_for('admin.rules_create') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ name: name, site: site, title_xpath: title_xpath, content_xpath: content_xpath, enabled: enabled, request_headers: headers }),
+      success: function(){ layer.msg('新增成功'); $('input[name=name]').val(''); $('input[name=site]').val(''); $('input[name=title_xpath]').val(''); $('input[name=content_xpath]').val(''); $('textarea[name=request_headers]').val(''); load(); },
+      error: function(xhr){ layer.msg('新增失败: '+ (xhr.responseJSON && xhr.responseJSON.error || '')); }
+    });
+  });
+  $('#rules-table').on('click','button[data-action=save]', function(){
+    var id = $(this).data('id');
+    var name = $('.edit-name[data-id='+id+']').val();
+    var site = $('.edit-site[data-id='+id+']').val();
+    var title_xpath = $('.edit-title[data-id='+id+']').val();
+    var content_xpath = $('.edit-content[data-id='+id+']').val();
+    var headers = $('.edit-headers[data-id='+id+']').val();
+    var enabled = $('.edit-enabled[data-id='+id+']').is(':checked');
+    $.ajax({ url: '{{ url_for('admin.rules_update') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ id: id, name: name, site: site, title_xpath: title_xpath, content_xpath: content_xpath, request_headers: headers, enabled: enabled }),
+      success: function(){ layer.msg('保存成功'); load(); }, error: function(xhr){ layer.msg('保存失败: '+ (xhr.responseJSON && xhr.responseJSON.error || '')); }
+    });
+  });
+  $('#rules-table').on('click','button[data-action=copy]', function(){
+    var id = $(this).data('id');
+    layer.confirm('确认复制该规则？', function(index){
+      $.ajax({ url: '{{ url_for('admin.rules_copy') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ id: id }),
+        success: function(){ layer.msg('复制成功'); load(); }, error: function(xhr){ layer.msg('复制失败: '+ (xhr.responseJSON && xhr.responseJSON.error || '')); }
+      });
+      layer.close(index);
+    });
+  });
+  $('#rules-table').on('click','button[data-action=delete]', function(){
+    var id = $(this).data('id');
+    layer.confirm('确认删除该规则？', function(index){
+      $.ajax({ url: '{{ url_for('admin.rules_delete') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ id: id }),
+        success: function(){ layer.msg('删除成功'); load(); }, error: function(){ layer.msg('删除失败'); }
+      });
+      layer.close(index);
+    });
+  });
+  load();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>内容预览 - {{ item.title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='layui/css/layui.css') }}">
+  <style>
+    body { padding: 20px; background: #f2f2f2; }
+    .preview-card { background: #fff; padding: 30px; border-radius: 4px; box-shadow: 0 1px 2px 0 rgba(0,0,0,.05); max-width: 1000px; margin: 0 auto; }
+    .preview-title { font-size: 24px; font-weight: bold; margin-bottom: 15px; text-align: center; color: #333; }
+    .preview-meta { text-align: center; color: #999; margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
+    .preview-meta span { margin: 0 10px; }
+    .preview-content { font-size: 16px; line-height: 1.8; color: #333; }
+    .preview-content p { margin-bottom: 15px; text-indent: 2em; }
+    .raw-html-toggle { margin-top: 30px; text-align: center; }
+  </style>
+</head>
+<body>
+
+<div class="preview-card">
+  <h1 class="preview-title">{{ item.title }}</h1>
+  <div class="preview-meta">
+    <span>来源：{{ item.source or '未知' }}</span>
+    <span>时间：{{ item.created_at }}</span>
+    <span><a href="{{ item.url }}" target="_blank" style="color:#009688">原文链接</a></span>
+  </div>
+  
+  <div class="preview-content">
+    {% if detail.content_text %}
+      {{ detail.content_text | replace('\n', '<br>') | safe }}
+    {% else %}
+      <p style="color:#ccc;text-align:center">暂无正文内容</p>
+    {% endif %}
+  </div>
+
+  <div class="raw-html-toggle">
+    <button class="layui-btn layui-btn-primary layui-btn-sm" onclick="toggleHtml()">查看原始HTML</button>
+  </div>
+  <div id="raw-html" style="display:none; margin-top:20px; padding:15px; background:#f8f8f8; border:1px solid #eee; overflow:auto; max-height:500px;">
+    <xmp>{{ detail.content_html }}</xmp>
+  </div>
+</div>
+
+<script>
+function toggleHtml(){
+  var el = document.getElementById('raw-html');
+  if(el.style.display === 'none'){
+    el.style.display = 'block';
+  }else{
+    el.style.display = 'none';
+  }
+}
+</script>
+
+</body>
+</html>

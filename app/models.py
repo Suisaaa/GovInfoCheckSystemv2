@@ -42,3 +42,23 @@ class CollectionDetail(db.Model):
     final_url = db.Column(db.String(1024))
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     item = db.relationship('CollectionItem')
+
+class CrawlRule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128))
+    site = db.Column(db.String(256), nullable=False)
+    title_xpath = db.Column(db.Text)
+    content_xpath = db.Column(db.Text)
+    request_headers = db.Column(db.Text)
+    enabled = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+    updated_at = db.Column(db.DateTime, onupdate=db.func.now())
+
+class AIEngine(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    provider = db.Column(db.String(128), nullable=False)
+    api_url = db.Column(db.String(512), nullable=False)
+    api_key = db.Column(db.String(512))
+    model_name = db.Column(db.String(256), nullable=False)
+    enabled = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
