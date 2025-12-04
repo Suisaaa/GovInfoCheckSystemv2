@@ -2,6 +2,8 @@ import os
 from urllib.parse import quote
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+import re
 import re
 
 DEFAULT_HEADERS = {
@@ -82,4 +84,59 @@ def fetch_baidu_news(keyword: str, limit: int = 20, pn: int = 0):
                 break
         offset += 10
         pages += 1
+    return items
+
+def fetch_xinhua_sichuan(keyword: str | None = None, limit: int = 20):
+    base = 'https://sc.news.cn/'
+    url = urljoin(base, 'scyw.htm')
+    resp = requests.get(url, headers=_headers_with_cookie(), timeout=10)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, 'lxml')
+    items = []
+    seen = set()
+    containers = soup.select('.news, .newslist, .list, .content, .con, .data, .dataList, .index-data, .xh-list, ul, section') or [soup]
+    for ct in containers:
+        for a in ct.select('a[href]'):
+            href = a.get('href')
+            if not href:
+                continue
+            full = href
+            if href.startswith('//'):
+                full = 'https:' + href
+            elif href.startswith('/'): 
+                full = urljoin(base, href)
+            elif not re.match(r'^https?://', href):
+                full = urljoin(base, href)
+            if full in seen:
+                continue
+            title = a.get_text(strip=True)
+            if not title or len(title) < 6:
+                continue
+            cover = None
+            p = a.parent
+            if p:
+                img = p.find('img')
+                if img:
+                    cover = img.get('src') or img.get('data-src') or img.get('data-original')
+                    if cover and cover.startswith('//'):
+                        cover = 'https:' + cover
+                    elif cover and cover.startswith('/'):
+                        cover = urljoin(base, cover)
+            source = '新华网'
+            item = {
+                'title': title,
+                'cover': cover,
+                'url': full,
+                'source': source,
+            }
+            if keyword:
+                if keyword in title:
+                    items.append(item)
+            else:
+                items.append(item)
+            seen.add(full)
+            if len(items) >= limit:
+                break
+        if len(items) >= limit:
+            break
     return items
