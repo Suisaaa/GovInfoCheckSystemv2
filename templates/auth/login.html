@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='layui/css/layui.css') }}">
+  <style>
+    body {background:#0b1a2b;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+    .card {width:360px;background:rgba(17,34,56,.9);border-radius:12px;padding:24px;color:#fff;box-shadow:0 0 24px rgba(64,160,255,.3)}
+    .title {font-size:20px;margin-bottom:16px;text-align:center}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">{{ app_setting.app_name if app_setting else '' }}</div>
+    <form class="layui-form" method="post" action="{{ url_for('auth.login') }}">
+      <div class="layui-form-item">
+        <label class="layui-form-label">用户名</label>
+        <div class="layui-input-block">
+          <input type="text" name="username" required lay-verify="required" placeholder="请输入用户名" autocomplete="off" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">密码</label>
+        <div class="layui-input-block">
+          <input type="password" name="password" required lay-verify="required" placeholder="请输入密码" autocomplete="off" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <div class="layui-input-block">
+          <button class="layui-btn layui-btn-fluid" lay-submit>安全登录</button>
+        </div>
+      </div>
+    </form>
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+    <div class="layui-text" style="color:#ff6b6b">{{ messages[0] }}</div>
+    {% endif %}
+    {% endwith %}
+  </div>
+  <script src="{{ url_for('static', filename='layui/layui.js') }}"></script>
+</body>
+</html>

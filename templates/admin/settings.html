@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="layui-card">
+  <div class="layui-card-header">系统设置</div>
+  <div class="layui-card-body">
+    <form class="layui-form" method="post">
+      <div class="layui-form-item">
+        <label class="layui-form-label">应用名称</label>
+        <div class="layui-input-block">
+          <input type="text" name="app_name" value="{{ setting.app_name if setting else '' }}" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">LOGO路径</label>
+        <div class="layui-input-block">
+          <input type="text" name="logo_path" value="{{ setting.logo_path if setting else '' }}" class="layui-input" placeholder="static 下文件路径">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <div class="layui-input-block">
+          <button class="layui-btn" lay-submit>保存</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

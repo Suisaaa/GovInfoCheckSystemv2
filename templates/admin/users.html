@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="layui-row">
+  <div class="layui-col-md6">
+    <div class="layui-card">
+      <div class="layui-card-header">新增用户</div>
+      <div class="layui-card-body">
+        <form class="layui-form" method="post">
+          <div class="layui-form-item">
+            <label class="layui-form-label">用户名</label>
+            <div class="layui-input-block">
+              <input type="text" name="username" required class="layui-input">
+            </div>
+          </div>
+          <div class="layui-form-item">
+            <label class="layui-form-label">密码</label>
+            <div class="layui-input-block">
+              <input type="password" name="password" required class="layui-input">
+            </div>
+          </div>
+          <div class="layui-form-item">
+            <label class="layui-form-label">角色</label>
+            <div class="layui-input-block">
+              <select name="role_id" required>
+                {% for r in roles %}
+                <option value="{{ r.id }}">{{ r.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="layui-form-item">
+            <div class="layui-input-block">
+              <button class="layui-btn" lay-submit>保存</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="layui-col-md6">
+    <div class="layui-card">
+      <div class="layui-card-header">用户列表</div>
+      <div class="layui-card-body">
+        <table class="layui-table">
+          <thead><tr><th>ID</th><th>用户名</th><th>角色</th></tr></thead>
+          <tbody>
+            {% for u in users %}
+            <tr><td>{{ u.id }}</td><td>{{ u.username }}</td><td>{{ u.role.name if u.role else '' }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

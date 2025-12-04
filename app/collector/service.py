@@ -1,0 +1,71 @@
+import os
+from urllib.parse import quote
+import requests
+from bs4 import BeautifulSoup
+
+DEFAULT_HEADERS = {
+    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    'cache-control': 'max-age=0',
+    'connection': 'keep-alive',
+    'sec-ch-ua': '"Chromium";v="142", "Microsoft Edge";v="142", "Not_A Brand";v="99"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+    'sec-fetch-dest': 'document',
+    'sec-fetch-mode': 'navigate',
+    'sec-fetch-site': 'none',
+    'sec-fetch-user': '?1',
+    'upgrade-insecure-requests': '1',
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0'
+}
+
+def _headers_with_cookie():
+    headers = DEFAULT_HEADERS.copy()
+    cookie = os.getenv('BAIDU_COOKIE')
+    if cookie:
+        headers['cookie'] = cookie
+    return headers
+
+def fetch_baidu_news(keyword: str, limit: int = 20):
+    base = 'https://www.baidu.com/s'
+    params = f'rtt=1&bsst=1&cl=2&tn=news&rsv_dl=ns_pc&word={quote(keyword)}'
+    url = f'{base}?{params}'
+    resp = requests.get(url, headers=_headers_with_cookie(), timeout=10)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, 'lxml')
+    items = []
+
+    # tolerant selectors across layouts
+    candidates = soup.select('div.result, div.news, div.new-pmd, div.result-op, div.c-container')
+    for c in candidates:
+        a = c.find('a', href=True)
+        if not a:
+            continue
+        title = a.get_text(strip=True)
+        href = a['href']
+        # summary
+        summary = ''
+        summ_el = c.select_one('.c-span-last, .content, .c-summary, .news-summary, p')
+        if summ_el:
+            summary = summ_el.get_text(' ', strip=True)
+        # cover
+        img = c.find('img')
+        cover = None
+        if img:
+            cover = img.get('src') or img.get('data-src') or img.get('data-thumb')
+        # source
+        source = ''
+        src_el = c.select_one('.c-author, .source, .news-source')
+        if src_el:
+            source = src_el.get_text(' ', strip=True)
+        items.append({
+            '标题': title,
+            '概要': summary,
+            '封面': cover,
+            '原始URL': href,
+            '来源': source,
+        })
+        if len(items) >= limit:
+            break
+    return items
+

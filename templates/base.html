@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_setting.app_name if app_setting else 'GovInfoCheckSystem' }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='layui/css/layui.css') }}">
+  <style>
+    body { margin: 0; }
+    .layui-body { padding: 16px; }
+  </style>
+</head>
+<body class="layui-layout-body">
+<div class="layui-layout layui-layout-admin">
+  <div class="layui-header">
+    <div class="layui-logo">政企智能舆情分析</div>
+    <ul class="layui-nav layui-layout-right">
+      <li class="layui-nav-item"><a href="{{ url_for('auth.logout') }}">退出</a></li>
+    </ul>
+  </div>
+  <div class="layui-side">
+    <div class="layui-side-scroll">
+      <ul class="layui-nav layui-nav-tree">
+        <li class="layui-nav-item"><a href="{{ url_for('main.index') }}">首页</a></li>
+        <li class="layui-nav-item"><a href="{{ url_for('admin.index') }}">后台管理</a></li>
+        <li class="layui-nav-item"><a href="{{ url_for('admin.users') }}">用户管理</a></li>
+        <li class="layui-nav-item"><a href="{{ url_for('admin.settings') }}">系统设置</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="layui-body">
+    {% block content %}{% endblock %}
+  </div>
+</div>
+<script src="{{ url_for('static', filename='layui/layui.js') }}"></script>
+<script>
+layui.use(function(){
+  var element = layui.element;
+});
+</script>
+</body>
+</html>

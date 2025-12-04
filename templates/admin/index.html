@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="layui-row layui-col-space16">
+  <div class="layui-col-md6">
+    <div class="layui-card"><div class="layui-card-header">用户管理</div>
+      <div class="layui-card-body"><a class="layui-btn" href="{{ url_for('admin.users') }}">进入</a></div></div>
+  </div>
+  <div class="layui-col-md6">
+    <div class="layui-card"><div class="layui-card-header">角色管理</div>
+      <div class="layui-card-body"><a class="layui-btn" href="{{ url_for('admin.roles') }}">进入</a></div></div>
+  </div>
+  <div class="layui-col-md12" style="margin-top:16px">
+    <div class="layui-card"><div class="layui-card-header">系统设置</div>
+      <div class="layui-card-body"><a class="layui-btn" href="{{ url_for('admin.settings') }}">进入</a></div></div>
+  </div>
+</div>
+{% endblock %}
