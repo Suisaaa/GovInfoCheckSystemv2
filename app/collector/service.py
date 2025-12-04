@@ -2,6 +2,7 @@ import os
 from urllib.parse import quote
 import requests
 from bs4 import BeautifulSoup
+import re
 
 DEFAULT_HEADERS = {
     'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -26,6 +27,24 @@ def _headers_with_cookie():
         headers['cookie'] = cookie
     return headers
 
+def _extract_source(container: BeautifulSoup) -> str:
+    # try multiple specific selectors
+    for sel in ['.news-source', '.c-author', 'span.c-author', 'p.c-author', 'span.source', '.c-color-gray', '.c-color-gray2']:
+        el = container.select_one(sel)
+        if el and el.get_text(strip=True):
+            text = el.get_text(' ', strip=True)
+            # normalize using regex to capture source name before time separators
+            m = re.search(r'([\u4e00-\u9fa5A-Za-z0-9_·\-]+)(?:\s*[·|]\s*|\s+)(?:\d{1,2}-\d{1,2}|\d{4}年\d{1,2}月\d{1,2}日|\d{2}:\d{2})', text)
+            if m:
+                return m.group(1).replace('·', '').strip()
+            return text
+    # fallback: scan text blocks
+    text = container.get_text(' ', strip=True)
+    m = re.search(r'来源[:：]\s*([\u4e00-\u9fa5A-Za-z0-9_·\-]+)', text)
+    if m:
+        return m.group(1).replace('·', '').strip()
+    return ''
+
 def fetch_baidu_news(keyword: str, limit: int = 20, pn: int = 0):
     base = 'https://www.baidu.com/s'
     items = []
@@ -38,7 +57,7 @@ def fetch_baidu_news(keyword: str, limit: int = 20, pn: int = 0):
         resp = requests.get(url, headers=_headers_with_cookie(), timeout=10)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'lxml')
-        candidates = soup.select('div.result, div.news, div.new-pmd, div.result-op, div.c-container')
+        candidates = soup.select('div.result, div.news, div.new-pmd, div.result-op, div.c-container, article')
         for c in candidates:
             a = c.find('a', href=True)
             if not a:
@@ -55,16 +74,13 @@ def fetch_baidu_news(keyword: str, limit: int = 20, pn: int = 0):
             cover = None
             if img:
                 cover = img.get('src') or img.get('data-src') or img.get('data-thumb')
-            source = ''
-            src_el = c.select_one('.c-author, .source, .news-source')
-            if src_el:
-                source = src_el.get_text(' ', strip=True)
+            source = _extract_source(c)
             items.append({
-                '标题': title,
-                '概要': summary,
-                '封面': cover,
-                '原始URL': href,
-                '来源': source,
+                'title': title,
+                'summary': summary,
+                'cover': cover,
+                'url': href,
+                'source': source,
             })
             seen.add(href)
             if len(items) >= limit:
