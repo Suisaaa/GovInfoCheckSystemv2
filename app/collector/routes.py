@@ -6,10 +6,11 @@ from .service import fetch_baidu_news
 def collect():
     q = request.args.get('q') or request.args.get('keyword') or ''
     limit = int(request.args.get('limit') or 20)
+    pn = int(request.args.get('pn') or 0)
     if not q:
         return jsonify({'error': 'keyword required'}), 400
     try:
-        items = fetch_baidu_news(q, limit=limit)
-        return jsonify({'keyword': q, 'count': len(items), 'items': items})
+        items = fetch_baidu_news(q, limit=limit, pn=pn)
+        return jsonify({'keyword': q, 'pn': pn, 'count': len(items), 'items': items})
     except Exception as e:
         return jsonify({'error': str(e)}), 500

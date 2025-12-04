@@ -26,46 +26,49 @@ def _headers_with_cookie():
         headers['cookie'] = cookie
     return headers
 
-def fetch_baidu_news(keyword: str, limit: int = 20):
+def fetch_baidu_news(keyword: str, limit: int = 20, pn: int = 0):
     base = 'https://www.baidu.com/s'
-    params = f'rtt=1&bsst=1&cl=2&tn=news&rsv_dl=ns_pc&word={quote(keyword)}'
-    url = f'{base}?{params}'
-    resp = requests.get(url, headers=_headers_with_cookie(), timeout=10)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, 'lxml')
     items = []
-
-    # tolerant selectors across layouts
-    candidates = soup.select('div.result, div.news, div.new-pmd, div.result-op, div.c-container')
-    for c in candidates:
-        a = c.find('a', href=True)
-        if not a:
-            continue
-        title = a.get_text(strip=True)
-        href = a['href']
-        # summary
-        summary = ''
-        summ_el = c.select_one('.c-span-last, .content, .c-summary, .news-summary, p')
-        if summ_el:
-            summary = summ_el.get_text(' ', strip=True)
-        # cover
-        img = c.find('img')
-        cover = None
-        if img:
-            cover = img.get('src') or img.get('data-src') or img.get('data-thumb')
-        # source
-        source = ''
-        src_el = c.select_one('.c-author, .source, .news-source')
-        if src_el:
-            source = src_el.get_text(' ', strip=True)
-        items.append({
-            '标题': title,
-            '概要': summary,
-            '封面': cover,
-            '原始URL': href,
-            '来源': source,
-        })
-        if len(items) >= limit:
-            break
+    seen = set()
+    offset = max(0, int(pn or 0))
+    pages = 0
+    while len(items) < limit and pages < 10:
+        params = f'rtt=1&bsst=1&cl=2&tn=news&rsv_dl=ns_pc&word={quote(keyword)}&pn={offset}'
+        url = f'{base}?{params}'
+        resp = requests.get(url, headers=_headers_with_cookie(), timeout=10)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, 'lxml')
+        candidates = soup.select('div.result, div.news, div.new-pmd, div.result-op, div.c-container')
+        for c in candidates:
+            a = c.find('a', href=True)
+            if not a:
+                continue
+            title = a.get_text(strip=True)
+            href = a['href']
+            if href in seen:
+                continue
+            summary = ''
+            summ_el = c.select_one('.c-span-last, .content, .c-summary, .news-summary, p')
+            if summ_el:
+                summary = summ_el.get_text(' ', strip=True)
+            img = c.find('img')
+            cover = None
+            if img:
+                cover = img.get('src') or img.get('data-src') or img.get('data-thumb')
+            source = ''
+            src_el = c.select_one('.c-author, .source, .news-source')
+            if src_el:
+                source = src_el.get_text(' ', strip=True)
+            items.append({
+                '标题': title,
+                '概要': summary,
+                '封面': cover,
+                '原始URL': href,
+                '来源': source,
+            })
+            seen.add(href)
+            if len(items) >= limit:
+                break
+        offset += 10
+        pages += 1
     return items
-
