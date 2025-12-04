@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>模型对话测试 · {{ engine.provider }} · {{ engine.model_name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='layui/css/layui.css') }}">
+  <style>
+    html, body { height: 100%; margin: 0; }
+    .chat-page { display: flex; flex-direction: column; height: 100%; background: #f7f8fa; }
+    .chat-header { background: #111827; color: #fff; padding: 12px 16px; font-weight: 600; }
+    .chat-main { flex: 1; padding: 16px; }
+    .chat-box { height: calc(100% - 180px); overflow: auto; padding: 12px; background: #fff; border-radius: 8px; border: 1px solid #e5e7eb; }
+    .chat-input { margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="chat-page">
+    <div class="chat-header">模型对话测试 · {{ engine.provider }} · {{ engine.model_name }}</div>
+    <div class="chat-main">
+      <div id="chat-box" class="chat-box"></div>
+      <div class="layui-form chat-input">
+        <textarea id="chat-input" class="layui-textarea" placeholder="输入你的问题..." style="height:120px"></textarea>
+        <div style="margin-top:8px">
+          <button class="layui-btn" id="btn-send">发送</button>
+          <button class="layui-btn layui-btn-primary" id="btn-clear">清空</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='layui/layui.js') }}"></script>
+  <script>
+  layui.use(['element','layer'], function(){
+    var $ = layui.$, layer = layui.layer;
+    var engineId = {{ engine.id }};
+    var messages = [];
+
+    function append(role, content){
+      var cls = role === 'user' ? 'background:#f3f4f6; border:1px solid #e5e7eb' : 'background:#e6fffb; border:1px solid #a7f3d0';
+      var align = role === 'user' ? 'right' : 'left';
+      var item = '<div style="margin:10px 0; text-align:'+ align +'">'
+        + '<div style="display:inline-block; max-width:80%; padding:10px 12px; border-radius:10px; '+ cls +'">'
+        + $('<div/>').text(content).html()
+        + '</div></div>';
+      $('#chat-box').append(item);
+      $('#chat-box').scrollTop($('#chat-box')[0].scrollHeight);
+    }
+
+    $('#btn-send').on('click', function(){
+      var txt = $('#chat-input').val().trim();
+      if(!txt){ layer.msg('请输入内容'); return; }
+      $('#chat-input').val('');
+      messages.push({ role: 'user', content: txt });
+      append('user', txt);
+      $.ajax({ url: '{{ url_for('admin.ai_engines_chat_send') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ id: engineId, messages: messages }),
+        success: function(res){
+          if(res && res.status === 'ok'){
+            var ans = res.text || '';
+            messages.push({ role: 'assistant', content: ans });
+            append('assistant', ans || '[空响应]');
+          }else{
+            layer.msg('调用失败');
+          }
+        },
+        error: function(){ layer.msg('请求错误'); }
+      });
+    });
+    $('#btn-clear').on('click', function(){ messages = []; $('#chat-box').html(''); });
+  });
+  </script>
+</body>
+</html>

@@ -73,7 +73,8 @@ layui.use(['element','layer'], function(){
                 '<input type="text" class="layui-input edit-api_key" data-id="'+ x.id +'" placeholder="更新时填写新的 API Key" style="margin-bottom:8px">'+
                 '<input type="checkbox" class="edit-enabled" data-id="'+ x.id +'" '+ (x.enabled?'checked':'') +' title="启用">'+
               '</div>'+
-              '<button class="layui-btn layui-btn-sm" data-action="save" data-id="'+ x.id +'">保存</button> '
+              '<button class="layui-btn layui-btn-normal layui-btn-sm" data-action="chat" data-id="'+ x.id +'">对话测试</button> '
+              + '<button class="layui-btn layui-btn-sm" data-action="save" data-id="'+ x.id +'">保存</button> '
               + '<button class="layui-btn layui-btn-danger layui-btn-sm" data-action="delete" data-id="'+ x.id +'">删除</button>'+
             '</div>'+
           '</div>'+
@@ -124,6 +125,18 @@ layui.use(['element','layer'], function(){
         success: function(){ layer.msg('删除成功'); load(); }, error: function(){ layer.msg('删除失败'); }
       });
       layer.close(index);
+    });
+  });
+
+  $('#engine-grid').on('click','button[data-action=chat]', function(){
+    var id = $(this).data('id');
+    layer.open({
+      type: 2,
+      title: '模型对话测试',
+      shadeClose: true,
+      shade: 0.8,
+      area: ['1000px', '90%'],
+      content: '/admin/ai_engines/chat/' + id
     });
   });
 

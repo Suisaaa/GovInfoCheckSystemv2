@@ -7,6 +7,7 @@ from ..models import User, Role, Setting, CollectionItem, CollectionDetail, Craw
 from ..collector.service import _headers_with_cookie
 from urllib.parse import urlparse
 from lxml import html
+import requests
 
 def is_admin():
     return current_user.is_authenticated and current_user.role and current_user.role.name == 'admin'
@@ -417,6 +418,14 @@ def rules_page():
 def ai_engines_page():
     return render_template('admin/ai_engines.html')
 
+@bp.route('/ai_engines/chat/<int:id>', methods=['GET'])
+@login_required
+def ai_engines_chat_page(id):
+    r = db.session.get(AIEngine, int(id))
+    if not r:
+        return '引擎不存在', 404
+    return render_template('admin/ai_chat.html', engine=r)
+
 @bp.route('/rules/list', methods=['GET'])
 @login_required
 def rules_list():
@@ -536,6 +545,41 @@ def ai_engines_delete():
             deleted += 1
     db.session.commit()
     return jsonify({'status': 'ok', 'deleted': deleted})
+
+def _call_ai_engine(engine: AIEngine, messages: list):
+    headers = {'Content-Type': 'application/json'}
+    if engine.api_key:
+        headers['Authorization'] = f'Bearer {engine.api_key}'
+    payload = {
+        'model': engine.model_name,
+        'messages': messages,
+    }
+    try:
+        resp = requests.post(engine.api_url, json=payload, headers=headers, timeout=30)
+        data = resp.json()
+        txt = None
+        if isinstance(data, dict):
+            choices = data.get('choices')
+            if isinstance(choices, list) and choices:
+                msg = choices[0].get('message') or {}
+                txt = msg.get('content')
+        return {'status': 'ok', 'text': txt or '', 'raw': data}
+    except Exception as e:
+        return {'status': 'error', 'message': str(e)}
+
+@bp.route('/ai_engines/chat/send', methods=['POST'])
+@login_required
+def ai_engines_chat_send():
+    data = request.get_json(silent=True) or {}
+    id_ = data.get('id')
+    messages = data.get('messages') or []
+    if not id_:
+        return jsonify({'error': 'missing id'}), 400
+    r = db.session.get(AIEngine, int(id_))
+    if not r or not r.enabled:
+        return jsonify({'error': 'engine not available'}), 400
+    result = _call_ai_engine(r, messages)
+    return jsonify(result)
 
 @bp.route('/rules/create', methods=['POST'])
 @login_required
