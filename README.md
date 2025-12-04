@@ -7,10 +7,10 @@
   - `__init__.py` 应用工厂与蓝图注册
   - `config.py` 配置加载（支持 `.env/.env`）
   - `extensions.py` 扩展实例（SQLAlchemy/Migrate/LoginManager）
-  - `models.py` 数据模型（用户、角色、设置、采集项、采集详情）
+  - `models.py` 数据模型（用户、角色、设置、采集项、采集详情、采集规则、AI 引擎）
   - `main/` 基础页面
   - `auth/` 登录与退出
-  - `admin/` 后台管理（用户、角色、设置、采集管理）
+  - `admin/` 后台管理（用户、角色、设置、采集管理、数据仓库、采集规则库、AI 引擎管理）
   - `collector/` 采集服务与接口（百度新闻、新华网）
 - `templates/` 页面模板（含 `base.html` 布局与各模块页面）
 - `static/` 前端静态资源（请将 `layui-v2.13.2` 放置于 `static/layui`）
@@ -67,6 +67,9 @@
   - 角色管理：新增角色与列表视图
   - 系统设置：应用名称与 LOGO 路径设置
   - 数据采集管理：采集关键字、进度提示、橱窗展示、批量存储、深度采集
+  - 数据仓库管理：分页列表、编辑来源与关键字、批量删除、详细内容采集、预览
+  - 采集规则库：站点名称/域名、标题/内容 XPath、Headers、启用与复制（复制保持内容一致）
+  - AI 引擎管理：按 OpenAI API 范式配置第三方模型接入（服务商、API URL、API Key、模型名称、启用），支持新增/修改/删除与卡片橱窗展示
 
 ## 采集模块（API）
 - 百度新闻采集：`GET /api/collect`
@@ -104,16 +107,35 @@
   - 返回：`status`, `item_id`, `detail_id`, `preview`, `final_url`
 - 前端：在“数据采集管理”页面每条卡片提供“深度采集”按钮，并弹窗预览
 
+## 规则库与仓库联动
+- 规则库（`/admin/rules`）维护站点名称（来源名）、域名与 XPath/Headers
+- 数据仓库（`/admin/warehouse`）支持基于“来源”与“URL 域名”自动匹配多个规则，并依次尝试采集直至成功
+- 仓库列表显示“匹配规则”数量徽章，悬停可查看具体规则名称
+- 规则复制功能：支持一键复制为一条与原规则内容完全相同的新规则
+
+## AI 引擎管理
+- 页面路径：`/admin/ai_engines`
+- 支持以卡片橱窗展示多个大模型配置，字段：服务商、API URL、API Key（掩码显示）、模型名称、启用状态
+- 提供新增、修改、删除接口（`/admin/ai_engines/*`）以便后续与大模型交互功能调用
+
 ## 数据模型
 - `CollectionItem`：采集基础信息
   - `title`, `cover`, `url`(唯一), `source`, `keyword`, `deep_status`, `created_at`
 - `CollectionDetail`：深度采集详情
   - `item_id`, `content_text`, `content_html`, `final_url`, `created_at`
+- `CrawlRule`：采集规则
+  - `name`(站点名称), `site`(域名), `title_xpath`, `content_xpath`, `request_headers`, `enabled`, `created_at`
+- `AIEngine`：AI 引擎配置
+  - `provider`, `api_url`, `api_key`, `model_name`, `enabled`, `created_at`
 
 ## 开发指引
 - 新增模型：
   - 在 `app/models.py` 中定义模型
   - 执行迁移与升级：`flask db migrate`、`flask db upgrade`
+
+### 模型与迁移变更说明（近期）
+- 新增 `AIEngine` 模型：执行 `flask db migrate -m "add AIEngine" && flask db upgrade`
+- `CrawlRule.site` 取消唯一约束以支持规则复制与重复域名多规则：执行 `flask db migrate -m "remove unique on crawl_rule.site" && flask db upgrade`
 - 新增蓝图与路由：
   - 在 `app/xxx/__init__.py` 定义蓝图并在 `app/__init__.py` 注册
   - 在 `app/xxx/routes.py` 编写路由逻辑
@@ -133,6 +155,7 @@
 ## 安全与合规
 - 请勿在仓库提交任何真实账号、密码或 Cookie
 - `.env/.env` 中的敏感信息仅用于本地开发，生产环境建议通过安全的配置注入机制
+- AI 引擎的 `API Key` 仅用于本地开发与测试，请勿在公共仓库明文提交实际密钥
 
 ## 后续规划
 - 后台新增“采集数据列表”页面：分页筛选、删除与导出

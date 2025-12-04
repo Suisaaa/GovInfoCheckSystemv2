@@ -65,8 +65,32 @@
 
 ---
 
+## 2025-12-05
+- 09:10，动作：采集规则库表头与表单优化
+  - 模块：`templates/admin/rules.html`
+  - 要点：将“站点”改为“域名”，新增“站点名称”字段（与来源名匹配）
+
+- 09:40，动作：规则复制功能
+  - 模块：`admin/routes.py(/rules/copy)`, `models(CrawlRule)`
+  - 行为：复制生成与原规则内容完全一致的新规则，取消 `site` 唯一约束以支持重复域名多规则
+  - 迁移：`flask db migrate -m "remove unique on crawl_rule.site" && flask db upgrade`
+
+- 10:20，动作：数据仓库与规则库联动
+  - 模块：`admin/routes.py(warehouse_list, warehouse_deep_collect)`, `templates/admin/warehouse.html`
+  - 行为：按来源名与 URL 域名匹配多个规则，仓库列表显示“匹配规则”徽章；深度采集依次尝试规则直至成功
+
+- 11:30，动作：AI 引擎管理模块
+  - 模型：`models(AIEngine)` 字段：`provider`, `api_url`, `api_key`, `model_name`, `enabled`
+  - 接口：`/admin/ai_engines/*`（列表/新增/修改/删除）
+  - 页面：`templates/admin/ai_engines.html` 橱窗卡片展示、就地编辑与批量删除
+  - 导航：`templates/base.html` 增加菜单入口
+  - 迁移：`flask db migrate -m "add AIEngine" && flask db upgrade`
+
+- 12:00，动作：README 文档更新
+  - 模块：`README.md`
+  - 内容：补充规则库与仓库联动、AI 引擎管理、模型与迁移变更说明、安全提示
+
 ## 记录规范
 - 每次重要改动在此文件追加新条目，保持简洁与可检索性
 - 优先记录：接口变更、模型变更、迁移命令、运行与调试命令、常见问题与解决方法、提示词与抓取策略
 - 如涉及敏感信息（Cookie、密钥等），仅记录说明，不写入实际值
-
