@@ -485,12 +485,12 @@ def ai_engines_list():
 @login_required
 def ai_engines_create():
     data = request.get_json(silent=True) or {}
-    provider = data.get('provider')
-    api_url = data.get('api_url')
-    model_name = data.get('model_name')
+    provider = (data.get('provider') or '').strip()
+    api_url = (data.get('api_url') or '').strip()
+    model_name = (data.get('model_name') or '').strip()
     if not provider or not api_url or not model_name:
         return jsonify({'error': 'missing fields'}), 400
-    api_key = data.get('api_key')
+    api_key = (data.get('api_key') or '').strip() or None
     enabled = bool(data.get('enabled', True))
     r = AIEngine(provider=provider, api_url=api_url, api_key=api_key, model_name=model_name, enabled=enabled)
     db.session.add(r)
@@ -509,17 +509,18 @@ def ai_engines_update():
         return jsonify({'error': 'not found'}), 404
     provider = data.get('provider')
     if provider is not None and str(provider).strip() != '':
-        r.provider = provider
+        r.provider = str(provider).strip()
     api_url = data.get('api_url')
     if api_url is not None and str(api_url).strip() != '':
-        r.api_url = api_url
+        r.api_url = str(api_url).strip()
     model_name = data.get('model_name')
     if model_name is not None and str(model_name).strip() != '':
-        r.model_name = model_name
+        r.model_name = str(model_name).strip()
     api_key = data.get('api_key')
     if api_key is not None:
-        if str(api_key).strip() != '':
-            r.api_key = api_key
+        val = str(api_key).strip()
+        if val != '':
+            r.api_key = val
     enabled = data.get('enabled')
     if enabled is not None:
         r.enabled = bool(enabled)
@@ -546,23 +547,47 @@ def ai_engines_delete():
     db.session.commit()
     return jsonify({'status': 'ok', 'deleted': deleted})
 
+def _is_azure_engine(engine: AIEngine) -> bool:
+    host = (engine.api_url or '').lower()
+    prov = (engine.provider or '').lower()
+    return ('.azure.com' in host) or ('azure' in prov)
+
 def _call_ai_engine(engine: AIEngine, messages: list):
     headers = {'Content-Type': 'application/json'}
-    if engine.api_key:
-        headers['Authorization'] = f'Bearer {engine.api_key}'
-    payload = {
-        'model': engine.model_name,
-        'messages': messages,
-    }
+    payload = {'messages': messages}
+    if _is_azure_engine(engine):
+        if engine.api_key:
+            headers['api-key'] = engine.api_key
+        # Azure 路径携带 deployment，payload通常无需 model 字段
+    else:
+        if engine.api_key:
+            headers['Authorization'] = f'Bearer {engine.api_key}'
+        payload['model'] = engine.model_name
     try:
         resp = requests.post(engine.api_url, json=payload, headers=headers, timeout=30)
-        data = resp.json()
+        status = resp.status_code
+        data = None
+        try:
+            data = resp.json()
+        except Exception:
+            data = None
+        if status >= 400:
+            msg = None
+            if isinstance(data, dict):
+                err = data.get('error')
+                if isinstance(err, dict):
+                    msg = err.get('message') or err.get('code') or str(err)
+                elif isinstance(err, str):
+                    msg = err
+            return {'status': 'error', 'message': msg or f'HTTP {status}'}
         txt = None
         if isinstance(data, dict):
             choices = data.get('choices')
             if isinstance(choices, list) and choices:
                 msg = choices[0].get('message') or {}
                 txt = msg.get('content')
+            elif isinstance(data.get('message'), dict):
+                txt = data.get('message', {}).get('content')
         return {'status': 'ok', 'text': txt or '', 'raw': data}
     except Exception as e:
         return {'status': 'error', 'message': str(e)}
