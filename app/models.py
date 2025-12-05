@@ -62,3 +62,25 @@ class AIEngine(db.Model):
     model_name = db.Column(db.String(256), nullable=False)
     enabled = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+class Crawler(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128), nullable=False)
+    code = db.Column(db.String(64), unique=True, nullable=False)
+    entry = db.Column(db.String(256), nullable=False)
+    config_json = db.Column(db.Text)
+    enabled = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+    key = db.Column(db.String(128), unique=True)
+    class_path = db.Column(db.String(256))
+    base_url = db.Column(db.String(512))
+    headers_json = db.Column(db.Text)
+    params_json = db.Column(db.Text)
+
+class CrawlerSource(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    source = db.Column(db.String(256), nullable=False)
+    crawler_id = db.Column(db.Integer, db.ForeignKey('crawler.id'), nullable=False)
+    enabled = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+    crawler = db.relationship('Crawler')

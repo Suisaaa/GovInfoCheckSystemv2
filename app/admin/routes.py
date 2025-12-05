@@ -3,7 +3,7 @@ import json
 from flask_login import login_required, current_user
 from . import bp
 from ..extensions import db
-from ..models import User, Role, Setting, CollectionItem, CollectionDetail, CrawlRule, AIEngine
+from ..models import User, Role, Setting, CollectionItem, CollectionDetail, CrawlRule, AIEngine, Crawler, CrawlerSource
 from ..collector.service import _headers_with_cookie
 from urllib.parse import urlparse
 from lxml import html
@@ -237,6 +237,19 @@ def warehouse_update():
         it.deep_status = bool(deep_status)
     db.session.commit()
     return jsonify({'status': 'ok'})
+
+@bp.route('/warehouse/collect_dynamic', methods=['POST'])
+@login_required
+def warehouse_collect_dynamic():
+    data = request.get_json(silent=True) or {}
+    keyword = (data.get('keyword') or '').strip()
+    source = (data.get('source') or '').strip()
+    try:
+        from ..collector.service import run_crawler_by_source
+        items = run_crawler_by_source(source, {'keyword': keyword, 'limit': int(data.get('limit') or 20)})
+        return jsonify({'status': 'ok', 'count': len(items), 'items': items})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @bp.route('/warehouse/delete', methods=['POST'])
 @login_required
@@ -605,6 +618,270 @@ def ai_engines_chat_send():
         return jsonify({'error': 'engine not available'}), 400
     result = _call_ai_engine(r, messages)
     return jsonify(result)
+
+@bp.route('/crawlers', methods=['GET'])
+@login_required
+def crawlers_page():
+    return render_template('admin/crawlers.html')
+
+@bp.route('/crawlers/list', methods=['GET'])
+@login_required
+def crawlers_list():
+    page = int(request.args.get('page') or 1)
+    size = int(request.args.get('size') or 12)
+    q = request.args.get('q') or ''
+    query = db.session.query(Crawler)
+    if q:
+        like = f"%{q}%"
+        query = query.filter((Crawler.name.ilike(like)) | (Crawler.code.ilike(like)))
+    total = query.count()
+    rows = query.order_by(Crawler.created_at.desc()).offset((page-1)*size).limit(size).all()
+    items = []
+    for r in rows:
+        items.append({
+            'id': r.id,
+            'name': r.name,
+            'code': r.code,
+            'key': r.key,
+            'class_path': r.class_path,
+            'base_url': r.base_url,
+            'headers_json': r.headers_json,
+            'params_json': r.params_json,
+            'entry': r.entry,
+            'config_json': r.config_json,
+            'enabled': r.enabled,
+        })
+    return jsonify({'page': page, 'size': size, 'total': total, 'items': items})
+
+@bp.route('/crawlers/create', methods=['POST'])
+@login_required
+def crawlers_create():
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    code = (data.get('code') or '').strip()
+    key = (data.get('key') or '').strip() or None
+    class_path = (data.get('class_path') or '').strip() or None
+    base_url = (data.get('base_url') or '').strip() or None
+    headers_json = (data.get('headers_json') or '').strip() or None
+    params_json = (data.get('params_json') or '').strip() or None
+    entry = (data.get('entry') or '').strip() or None
+    if not name:
+        return jsonify({'error': 'missing name'}), 400
+    if not class_path and not entry:
+        return jsonify({'error': 'missing class_path or entry'}), 400
+    config_json = (data.get('config_json') or '').strip() or None
+    enabled = bool(data.get('enabled', True))
+    r = Crawler(name=name, code=code, key=key, class_path=class_path, base_url=base_url, headers_json=headers_json, params_json=params_json, entry=entry, config_json=config_json, enabled=enabled)
+    db.session.add(r)
+    db.session.commit()
+    return jsonify({'status': 'ok', 'id': r.id})
+
+@bp.route('/crawlers/update', methods=['POST'])
+@login_required
+def crawlers_update():
+    data = request.get_json(silent=True) or {}
+    id_ = data.get('id')
+    if not id_:
+        return jsonify({'error': 'missing id'}), 400
+    r = db.session.get(Crawler, int(id_))
+    if not r:
+        return jsonify({'error': 'not found'}), 404
+    name = data.get('name')
+    if name is not None and str(name).strip() != '':
+        r.name = str(name).strip()
+    code = data.get('code')
+    if code is not None and str(code).strip() != '':
+        r.code = str(code).strip()
+    key = data.get('key')
+    if key is not None and str(key).strip() != '':
+        r.key = str(key).strip()
+    class_path = data.get('class_path')
+    if class_path is not None and str(class_path).strip() != '':
+        r.class_path = str(class_path).strip()
+    base_url = data.get('base_url')
+    if base_url is not None and str(base_url).strip() != '':
+        r.base_url = str(base_url).strip()
+    headers_json = data.get('headers_json')
+    if headers_json is not None:
+        r.headers_json = str(headers_json).strip()
+    params_json = data.get('params_json')
+    if params_json is not None:
+        r.params_json = str(params_json).strip()
+    entry = data.get('entry')
+    if entry is not None and str(entry).strip() != '':
+        r.entry = str(entry).strip()
+    cfg = data.get('config_json')
+    if cfg is not None:
+        r.config_json = str(cfg).strip()
+    enabled = data.get('enabled')
+    if enabled is not None:
+        r.enabled = bool(enabled)
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+@bp.route('/crawlers/delete', methods=['POST'])
+@login_required
+def crawlers_delete():
+    data = request.get_json(silent=True) or {}
+    ids = data.get('ids') or []
+    id_ = data.get('id')
+    if id_:
+        ids.append(id_)
+    ids = [int(i) for i in ids if i]
+    if not ids:
+        return jsonify({'error': 'missing ids'}), 400
+    deleted = 0
+    for i in ids:
+        r = db.session.get(Crawler, i)
+        if r:
+            db.session.delete(r)
+            deleted += 1
+    db.session.commit()
+    return jsonify({'status': 'ok', 'deleted': deleted})
+
+@bp.route('/crawlers/sources/list', methods=['GET'])
+@login_required
+def crawler_sources_list():
+    cid = int(request.args.get('crawler_id') or 0)
+    rows = db.session.query(CrawlerSource).filter_by(crawler_id=cid).all()
+    return jsonify({'items': [{'id': s.id, 'source': s.source, 'enabled': s.enabled} for s in rows]})
+
+@bp.route('/crawlers/sources/add', methods=['POST'])
+@login_required
+def crawler_sources_add():
+    data = request.get_json(silent=True) or {}
+    cid = data.get('crawler_id')
+    source = (data.get('source') or '').strip()
+    if not cid or not source:
+        return jsonify({'error': 'missing fields'}), 400
+    r = db.session.get(Crawler, int(cid))
+    if not r:
+        return jsonify({'error': 'crawler not found'}), 404
+    s = CrawlerSource(source=source, crawler_id=r.id, enabled=True)
+    db.session.add(s)
+    db.session.commit()
+    return jsonify({'status': 'ok', 'id': s.id})
+
+@bp.route('/crawlers/sources/delete', methods=['POST'])
+@login_required
+def crawler_sources_delete():
+    data = request.get_json(silent=True) or {}
+    ids = data.get('ids') or []
+    id_ = data.get('id')
+    if id_:
+        ids.append(id_)
+    ids = [int(i) for i in ids if i]
+    if not ids:
+        return jsonify({'error': 'missing ids'}), 400
+    deleted = 0
+    for i in ids:
+        s = db.session.get(CrawlerSource, i)
+        if s:
+            db.session.delete(s)
+            deleted += 1
+    db.session.commit()
+    return jsonify({'status': 'ok', 'deleted': deleted})
+
+@bp.route('/crawlers/run', methods=['POST'])
+@login_required
+def crawlers_run():
+    data = request.get_json(silent=True) or {}
+    id_ = data.get('id')
+    code = (data.get('code') or '').strip()
+    params = data.get('params') or {}
+    from ..collector.service import run_crawler_by_entry, run_crawler_by_code, run_crawler_by_class
+    items = []
+    try:
+        if id_:
+            r = db.session.get(Crawler, int(id_))
+            if not r or not r.enabled:
+                return jsonify({'error': 'crawler not available'}), 400
+            if r.class_path:
+                import json as _json
+                hdr = None
+                prm = None
+                try:
+                    hdr = _json.loads(r.headers_json) if r.headers_json else None
+                except Exception:
+                    hdr = None
+                try:
+                    prm = _json.loads(r.params_json) if r.params_json else None
+                except Exception:
+                    prm = None
+                merged = prm or {}
+                if isinstance(params, dict):
+                    merged.update(params)
+                items = run_crawler_by_class(r.class_path, r.base_url, hdr, merged)
+            else:
+                items = run_crawler_by_entry(r.entry, params)
+        elif code:
+            items = run_crawler_by_code(code, params)
+        else:
+            return jsonify({'error': 'missing id or code'}), 400
+        return jsonify({'status': 'ok', 'count': len(items), 'items': items})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/crawlers/collect_by_source', methods=['POST'])
+@login_required
+def crawlers_collect_by_source():
+    data = request.get_json(silent=True) or {}
+    source = (data.get('source') or '').strip()
+    params = data.get('params') or {}
+    from ..collector.service import run_crawler_by_source
+    try:
+        items = run_crawler_by_source(source, params)
+        return jsonify({'status': 'ok', 'source': source, 'count': len(items), 'items': items})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/crawlers/analyze', methods=['POST'])
+@login_required
+def crawlers_analyze():
+    data = request.get_json(silent=True) or {}
+    source_url = (data.get('source_url') or '').strip()
+    headers_raw = data.get('headers_raw') or ''
+    source_name = (data.get('source') or '').strip() or None
+    if not source_url:
+        return jsonify({'error': 'missing source_url'}), 400
+    from ..collector.service import analyze_crawler_from_request
+    try:
+        cfg = analyze_crawler_from_request(source_url, headers_raw)
+        name = cfg.get('name')
+        code = cfg.get('code')
+        exists = db.session.query(Crawler).filter_by(code=code).first()
+        import json as _json
+        if exists:
+            exists.name = name
+            exists.key = cfg.get('key')
+            exists.class_path = cfg.get('class_path')
+            exists.base_url = cfg.get('base_url')
+            exists.headers_json = _json.dumps(cfg.get('headers_json') or {})
+            exists.params_json = _json.dumps(cfg.get('params_json') or {})
+            exists.enabled = True
+            db.session.commit()
+            cid = exists.id
+        else:
+            r = Crawler(
+                name=name,
+                code=code,
+                key=cfg.get('key'),
+                class_path=cfg.get('class_path'),
+                base_url=cfg.get('base_url'),
+                headers_json=_json.dumps(cfg.get('headers_json') or {}),
+                params_json=_json.dumps(cfg.get('params_json') or {}),
+                enabled=True,
+            )
+            db.session.add(r)
+            db.session.commit()
+            cid = r.id
+        if source_name:
+            m = CrawlerSource(source=source_name, crawler_id=cid, enabled=True)
+            db.session.add(m)
+            db.session.commit()
+        return jsonify({'status': 'ok', 'id': cid, 'code': code})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @bp.route('/rules/create', methods=['POST'])
 @login_required

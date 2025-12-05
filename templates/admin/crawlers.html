@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="layui-row layui-col-space16">
+  <div class="layui-col-md12">
+    <div class="layui-card">
+      <div class="layui-card-header">爬虫管理</div>
+      <div class="layui-card-body">
+        <form class="layui-form" id="crawler-form">
+          <div class="layui-form-item">
+            <label class="layui-form-label">名称</label>
+            <div class="layui-input-inline" style="width:200px">
+              <input type="text" name="name" class="layui-input" placeholder="如: 百度新闻">
+            </div>
+            <label class="layui-form-label">key</label>
+            <div class="layui-input-inline" style="width:200px">
+              <input type="text" name="key" class="layui-input" placeholder="唯一Key，如 baidu_news">
+            </div>
+            <label class="layui-form-label">Class</label>
+            <div class="layui-input-inline" style="width:320px">
+              <input type="text" name="class_path" class="layui-input" placeholder="模块:类，如 app.collector.service:CustomCrawler">
+            </div>
+            <div class="layui-input-inline" style="width:160px">
+              <input type="checkbox" name="enabled" title="启用" checked>
+            </div>
+          </div>
+          <div class="layui-form-item">
+            <label class="layui-form-label">Base URL</label>
+            <div class="layui-input-inline" style="width:360px">
+              <input type="text" name="base_url" class="layui-input" placeholder="可选，如 https://news.baidu.com/">
+            </div>
+          </div>
+          <div class="layui-form-item">
+            <label class="layui-form-label">Headers</label>
+            <div class="layui-input-block">
+              <textarea name="headers_json" class="layui-textarea" placeholder='可选：请求头JSON，如 {"User-Agent":"..."}'></textarea>
+            </div>
+          </div>
+          <div class="layui-form-item">
+            <label class="layui-form-label">Params</label>
+            <div class="layui-input-block">
+              <textarea name="params_json" class="layui-textarea" placeholder='可选：默认参数，如 {"keyword":"宜宾"}'></textarea>
+            </div>
+          </div>
+          <div class="layui-form-item">
+            <div class="layui-input-block">
+              <button type="button" class="layui-btn" id="btn-add">新增爬虫</button>
+            </div>
+          </div>
+        </form>
+
+        <fieldset class="layui-elem-field" style="margin-top:12px">
+          <legend>智能分析生成</legend>
+          <div class="layui-field-box">
+            <div class="layui-form">
+              <div class="layui-form-item">
+                <label class="layui-form-label">源始地址</label>
+                <div class="layui-input-block">
+                  <input type="text" class="layui-input" id="analyze-source-url" placeholder="如: https://www.baidu.com/s?...">
+                </div>
+              </div>
+              <div class="layui-form-item">
+                <label class="layui-form-label">Headers包</label>
+                <div class="layui-input-block">
+                  <textarea class="layui-textarea" id="analyze-headers-raw" placeholder="粘贴原始请求头文本"></textarea>
+                </div>
+              </div>
+              <div class="layui-form-item">
+                <div class="layui-input-inline">
+                  <button type="button" class="layui-btn" id="btn-analyze">智能分析并生成</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
+        <div id="crawler-grid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block page_scripts %}
+<script>
+layui.use(['layer'], function(){
+  var $ = layui.$, layer = layui.layer;
+  var page = 1, size = 12, rows = [];
+
+  function rowHtml(x){
+    var enabled = x.enabled ? '<span class="layui-badge layui-bg-green">启用</span>' : '<span class="layui-badge">停用</span>';
+    var main = (
+      '<tr class="main-row" data-id="'+ x.id +'">'+
+        '<td>'+ (x.name||'') +'</td>'+
+        '<td>'+ (x.key||'') +'</td>'+
+        '<td>'+ (x.class_path||'-') +'</td>'+
+        '<td>'+ (x.base_url||'-') +'</td>'+
+        '<td>'+ enabled +'</td>'+
+        '<td>'+
+          '<button class="layui-btn layui-btn-primary layui-btn-sm" data-action="edit" data-id="'+ x.id +'">编辑</button> '
+          + '<button class="layui-btn layui-btn-sm" data-action="save" data-id="'+ x.id +'">保存</button> '
+          + '<button class="layui-btn layui-btn-danger layui-btn-sm" data-action="delete" data-id="'+ x.id +'">删除</button>'+
+        '</td>'+
+      '</tr>'
+    );
+    var edit = (
+      '<tr class="edit-row" data-id="'+ x.id +'" style="display:none">'+
+        '<td colspan="6">'+
+          '<div class="layui-form">'+
+            '<input type="text" class="layui-input edit-name" data-id="'+ x.id +'" placeholder="名称" value="'+ (x.name||'') +'" style="margin-bottom:8px">'+
+            '<input type="text" class="layui-input edit-key" data-id="'+ x.id +'" placeholder="key" value="'+ (x.key||'') +'" style="margin-bottom:8px">'+
+            '<input type="text" class="layui-input edit-class_path" data-id="'+ x.id +'" placeholder="Class" value="'+ (x.class_path||'') +'" style="margin-bottom:8px">'+
+            '<input type="text" class="layui-input edit-base_url" data-id="'+ x.id +'" placeholder="Base URL" value="'+ (x.base_url||'') +'" style="margin-bottom:8px">'+
+            '<textarea class="layui-textarea edit-headers_json" data-id="'+ x.id +'" placeholder="Headers JSON" style="margin-bottom:8px">'+ (x.headers_json||'') +'</textarea>'+
+            '<textarea class="layui-textarea edit-params_json" data-id="'+ x.id +'" placeholder="Params JSON" style="margin-bottom:8px">'+ (x.params_json||'') +'</textarea>'+
+            '<input type="checkbox" class="edit-enabled" data-id="'+ x.id +'" '+ (x.enabled?'checked':'') +' title="启用">'+
+          '</div>'+
+        '</td>'+
+      '</tr>'
+    );
+    return main + edit;
+  }
+
+  function render(){
+    var header = '<thead><tr><th>名称</th><th>key</th><th>Class</th><th>Base URL</th><th>启用</th><th>操作</th></tr></thead>';
+    var body = '<tbody>'+ rows.map(rowHtml).join('') +'</tbody>';
+    $('#crawler-grid').html('<table class="layui-table">'+ header + body +'</table>');
+  }
+
+  function load(){
+    $.getJSON('{{ url_for('admin.crawlers_list') }}', { page: page, size: size }, function(res){ rows = res.items || []; render(); });
+  }
+
+  $('#btn-add').on('click', function(){
+    var name = $('input[name=name]').val();
+    var key = $('input[name=key]').val();
+    var class_path = $('input[name=class_path]').val();
+    var base_url = $('input[name=base_url]').val();
+    var headers_json = $('textarea[name=headers_json]').val();
+    var enabled = $('input[name=enabled]').is(':checked');
+    var params_json = $('textarea[name=params_json]').val();
+    $.ajax({ url: '{{ url_for('admin.crawlers_create') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ name, key, class_path, base_url, headers_json, enabled, params_json }),
+      success: function(){ layer.msg('新增成功'); $('input[name=name]').val(''); $('input[name=key]').val(''); $('input[name=class_path]').val(''); $('input[name=base_url]').val(''); $('textarea[name=headers_json]').val(''); $('textarea[name=params_json]').val(''); load(); },
+      error: function(xhr){ layer.msg('新增失败: '+ (xhr.responseJSON && (xhr.responseJSON.error||xhr.responseJSON.message) || '')); }
+    });
+  });
+
+  $('#crawler-grid').on('click','button[data-action=save]', function(){
+    var id = $(this).data('id');
+    var name = $('.edit-name[data-id='+id+']').val();
+    var key = $('.edit-key[data-id='+id+']').val();
+    var class_path = $('.edit-class_path[data-id='+id+']').val();
+    var base_url = $('.edit-base_url[data-id='+id+']').val();
+    var headers_json = $('.edit-headers_json[data-id='+id+']').val();
+    var params_json = $('.edit-params_json[data-id='+id+']').val();
+    var enabled = $('.edit-enabled[data-id='+id+']').is(':checked');
+    $.ajax({ url: '{{ url_for('admin.crawlers_update') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ id, name, key, class_path, base_url, headers_json, params_json, enabled }),
+      success: function(){ layer.msg('保存成功'); load(); }, error: function(xhr){ layer.msg('保存失败: '+ (xhr.responseJSON && (xhr.responseJSON.error||xhr.responseJSON.message) || '')); }
+    });
+  });
+
+  $('#crawler-grid').on('click','button[data-action=delete]', function(){
+    var id = $(this).data('id');
+    layer.confirm('确认删除该爬虫？', function(index){
+      $.ajax({ url: '{{ url_for('admin.crawlers_delete') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ id }),
+        success: function(){ layer.msg('删除成功'); load(); }, error: function(){ layer.msg('删除失败'); }
+      });
+      layer.close(index);
+    });
+  });
+
+  $('#crawler-grid').on('click','button[data-action=edit]', function(){
+    var id = $(this).data('id');
+    var row = $('#crawler-grid').find('tr.edit-row[data-id='+id+']');
+    var visible = row.is(':visible');
+    row.css('display', visible ? 'none' : 'table-row');
+  });
+
+  load();
+});
+</script>
+{% endblock %}
+  $('#btn-analyze').on('click', function(){
+    var url = $('#analyze-source-url').val();
+    var raw = $('#analyze-headers-raw').val();
+    $.ajax({ url: '{{ url_for('admin.crawlers_analyze') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ source_url: url, headers_raw: raw }),
+      success: function(res){ if(res.status==='ok'){ layer.msg('已生成：'+ res.code); load(); } else { layer.msg(res.error||'分析失败'); } },
+      error: function(xhr){ layer.msg((xhr.responseJSON && (xhr.responseJSON.error||xhr.responseJSON.message)) || '请求错误'); }
+    });
+  });

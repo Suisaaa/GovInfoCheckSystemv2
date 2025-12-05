@@ -5,6 +5,11 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 import re
 import re
+import importlib
+import json
+from ..extensions import db
+from ..models import Crawler, CrawlerSource
+from urllib.parse import urlparse, parse_qs, urlencode
 
 DEFAULT_HEADERS = {
     'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -146,3 +151,175 @@ def fetch_xinhua_sichuan(keyword: str | None = None, limit: int = 20):
         if len(items) >= limit:
             break
     return items
+
+def _resolve_callable(entry: str):
+    if not entry or ':' not in entry:
+        raise ValueError('invalid entry format, expected module:func')
+    mod, func = entry.split(':', 1)
+    module = importlib.import_module(mod)
+    return getattr(module, func)
+
+def run_crawler_by_entry(entry: str, params: dict):
+    fn = _resolve_callable(entry)
+    if not isinstance(params, dict):
+        params = {}
+    return fn(**{k: v for k, v in params.items() if v is not None})
+
+def _resolve_class(entry: str):
+    if not entry or ':' not in entry:
+        raise ValueError('invalid class format, expected module:Class')
+    mod, cls = entry.split(':', 1)
+    module = importlib.import_module(mod)
+    return getattr(module, cls)
+
+def run_crawler_by_class(class_path: str, base_url: str | None, headers: dict | None, params: dict | None):
+    Cls = _resolve_class(class_path)
+    inst = None
+    try:
+        inst = Cls(base_url=base_url, headers=headers)
+    except Exception:
+        inst = Cls()
+    if hasattr(inst, 'run'):
+        return inst.run(params or {})
+    if hasattr(inst, 'fetch'):
+        return inst.fetch(params or {})
+    raise ValueError('crawler class missing run/fetch')
+
+def parse_raw_headers(raw: str) -> dict:
+    lines = (raw or '').splitlines()
+    hdrs = {}
+    for ln in lines:
+        ln = ln.strip()
+        if not ln or ln.startswith(('GET ', 'POST ', 'PUT ', 'DELETE ', 'HTTP/')):
+            continue
+        if ':' in ln:
+            k, v = ln.split(':', 1)
+            k = k.strip().lower()
+            v = v.strip()
+            if k and v:
+                hdrs[k] = v
+    return hdrs
+
+def analyze_crawler_from_request(source_url: str, headers_raw: str):
+    if not source_url:
+        raise ValueError('missing source_url')
+    u = urlparse(source_url)
+    base = f"{u.scheme}://{u.netloc}{u.path}"
+    q = parse_qs(u.query)
+    params = {k: (v[0] if isinstance(v, list) and v else '') for k, v in q.items()}
+    headers = parse_raw_headers(headers_raw)
+    name = u.netloc
+    code = (u.netloc.replace('.', '_') + '_' + (u.path.strip('/').split('/')[0] or 'root')).lower()
+    return {
+        'name': name,
+        'key': code,
+        'code': code,
+        'class_path': 'app.collector.service:GenericListCrawler',
+        'base_url': base,
+        'headers_json': headers,
+        'params_json': params,
+        'enabled': True,
+    }
+
+class GenericListCrawler:
+    def __init__(self, base_url: str | None = None, headers: dict | None = None):
+        self.base_url = base_url
+        self.headers = headers or DEFAULT_HEADERS
+
+    def _build_url(self, params: dict | None):
+        if not self.base_url:
+            raise ValueError('base_url missing')
+        if params:
+            return f"{self.base_url}?{urlencode(params)}"
+        return self.base_url
+
+    def _extract_items(self, soup: BeautifulSoup, limit: int = 20):
+        items = []
+        seen = set()
+        candidates = soup.select('div.result, div.news, div.new-pmd, div.result-op, div.c-container, article, .news, .newslist, .list, .content, .con, .data, .dataList, .index-data, .xh-list, ul, section') or [soup]
+        for c in candidates:
+            for a in c.select('a[href]'):
+                href = a.get('href')
+                if not href or href in seen:
+                    continue
+                title = a.get_text(strip=True)
+                if not title or len(title) < 6:
+                    continue
+                img = a.find('img') or c.find('img')
+                cover = None
+                if img:
+                    cover = img.get('src') or img.get('data-src') or img.get('data-original') or img.get('data-thumb')
+                items.append({'title': title, 'url': href, 'cover': cover})
+                seen.add(href)
+                if len(items) >= limit:
+                    return items
+        return items
+
+    def run(self, params: dict | None = None):
+        p = params or {}
+        url = self._build_url(p)
+        hdrs = dict(self.headers)
+        resp = requests.get(url, headers=hdrs, timeout=15)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, 'lxml')
+        items = self._extract_items(soup, limit=int(p.get('limit') or 20))
+        return items
+
+def run_crawler_by_code(code: str, params: dict):
+    r = db.session.query(Crawler).filter_by(code=code, enabled=True).first()
+    if not r:
+        raise ValueError('crawler not found or disabled')
+    cfg = None
+    try:
+        cfg = json.loads(r.config_json) if r.config_json else None
+    except Exception:
+        cfg = None
+    hdr = None
+    prm = None
+    try:
+        hdr = json.loads(r.headers_json) if r.headers_json else None
+    except Exception:
+        hdr = None
+    try:
+        prm = json.loads(r.params_json) if r.params_json else None
+    except Exception:
+        prm = None
+    merged = {}
+    if isinstance(cfg, dict):
+        merged.update(cfg)
+    if isinstance(params, dict):
+        merged.update(params)
+    if r.class_path:
+        return run_crawler_by_class(r.class_path, r.base_url, hdr, merged if merged else prm)
+    return run_crawler_by_entry(r.entry, merged)
+
+def run_crawler_by_source(source: str, params: dict):
+    m = db.session.query(CrawlerSource).filter_by(source=source, enabled=True).first()
+    if not m:
+        raise ValueError('no crawler mapped for source')
+    r = db.session.get(Crawler, m.crawler_id)
+    if not r or not r.enabled:
+        raise ValueError('mapped crawler not available')
+    cfg = None
+    try:
+        cfg = json.loads(r.config_json) if r.config_json else None
+    except Exception:
+        cfg = None
+    hdr = None
+    prm = None
+    try:
+        hdr = json.loads(r.headers_json) if r.headers_json else None
+    except Exception:
+        hdr = None
+    try:
+        prm = json.loads(r.params_json) if r.params_json else None
+    except Exception:
+        prm = None
+    merged = {}
+    if isinstance(cfg, dict):
+        merged.update(cfg)
+    if isinstance(params, dict):
+        merged.update(params)
+    if r.class_path:
+        return run_crawler_by_class(r.class_path, r.base_url, hdr, merged if merged else prm)
+    return run_crawler_by_entry(r.entry, merged)

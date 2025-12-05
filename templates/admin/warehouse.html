@@ -41,6 +41,7 @@
           </thead>
           <tbody></tbody>
         </table>
+        <div id="warehouse-pager" style="text-align:center; padding:10px 0"></div>
       </div>
     </div>
   </div>
@@ -48,8 +49,8 @@
 {% endblock %}
 {% block page_scripts %}
 <script>
-layui.use(['element','layer'], function(){
-  var $ = layui.$, layer = layui.layer;
+layui.use(['element','layer','laypage'], function(){
+  var $ = layui.$, layer = layui.layer, laypage = layui.laypage;
   var page = 1, size = 10, total = 0, rows = [];
   function rowHtml(x){
     var cover = x.cover ? ('<img src="'+ x.cover +'" style="width:80px;height:60px;object-fit:cover">') : '';
@@ -85,6 +86,16 @@ layui.use(['element','layer'], function(){
     $.getJSON('{{ url_for('admin.warehouse_list') }}', { page: page, size: size, q: q }, function(res){
       page = res.page; size = res.size; total = res.total; rows = res.items || [];
       render();
+      laypage.render({
+        elem: 'warehouse-pager',
+        count: total,
+        limit: size,
+        curr: page,
+        layout: ['prev','page','next','count'],
+        jump: function(obj, first){
+          if(!first){ page = obj.curr; size = obj.limit; load(); }
+        }
+      });
     });
   }
   $('#btn-search').on('click', function(){ page = 1; load(); });
