@@ -647,6 +647,7 @@ def crawlers_list():
             'base_url': r.base_url,
             'headers_json': r.headers_json,
             'params_json': r.params_json,
+            'dynamic_keys': r.dynamic_keys,
             'entry': r.entry,
             'config_json': r.config_json,
             'enabled': r.enabled,
@@ -664,6 +665,7 @@ def crawlers_create():
     base_url = (data.get('base_url') or '').strip() or None
     headers_json = (data.get('headers_json') or '').strip() or None
     params_json = (data.get('params_json') or '').strip() or None
+    dynamic_keys = (data.get('dynamic_keys') or '').strip() or None
     entry = (data.get('entry') or '').strip() or None
     if not name:
         return jsonify({'error': 'missing name'}), 400
@@ -671,7 +673,7 @@ def crawlers_create():
         return jsonify({'error': 'missing class_path or entry'}), 400
     config_json = (data.get('config_json') or '').strip() or None
     enabled = bool(data.get('enabled', True))
-    r = Crawler(name=name, code=code, key=key, class_path=class_path, base_url=base_url, headers_json=headers_json, params_json=params_json, entry=entry, config_json=config_json, enabled=enabled)
+    r = Crawler(name=name, code=code, key=key, class_path=class_path, base_url=base_url, headers_json=headers_json, params_json=params_json, dynamic_keys=dynamic_keys, entry=entry, config_json=config_json, enabled=enabled)
     db.session.add(r)
     db.session.commit()
     return jsonify({'status': 'ok', 'id': r.id})
@@ -707,6 +709,9 @@ def crawlers_update():
     params_json = data.get('params_json')
     if params_json is not None:
         r.params_json = str(params_json).strip()
+    dynamic_keys = data.get('dynamic_keys')
+    if dynamic_keys is not None:
+        r.dynamic_keys = str(dynamic_keys).strip()
     entry = data.get('entry')
     if entry is not None and str(entry).strip() != '':
         r.entry = str(entry).strip()
@@ -835,6 +840,41 @@ def crawlers_collect_by_source():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@bp.route('/crawlers/headers_refresh', methods=['POST'])
+@login_required
+def crawlers_headers_refresh():
+    data = request.get_json(silent=True) or {}
+    id_ = data.get('id')
+    raw = data.get('headers_raw') or ''
+    if not id_:
+        return jsonify({'error': 'missing id'}), 400
+    r = db.session.get(Crawler, int(id_))
+    if not r:
+        return jsonify({'error': 'not found'}), 404
+    from ..collector.service import parse_raw_headers
+    try:
+        hdr = parse_raw_headers(raw)
+        import json as _json
+        r.headers_json = _json.dumps(hdr or {})
+        db.session.commit()
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/crawlers/vars_by_source', methods=['GET'])
+@login_required
+def crawlers_vars_by_source():
+    source = (request.args.get('source') or '').strip()
+    if not source:
+        return jsonify({'error': 'missing source'}), 400
+    m = db.session.query(CrawlerSource).filter_by(source=source, enabled=True).first()
+    if not m:
+        return jsonify({'error': 'no mapping'}), 404
+    r = db.session.get(Crawler, m.crawler_id)
+    if not r:
+        return jsonify({'error': 'crawler not found'}), 404
+    return jsonify({'crawler_id': r.id, 'dynamic_keys': r.dynamic_keys or ''})
+
 @bp.route('/crawlers/analyze', methods=['POST'])
 @login_required
 def crawlers_analyze():
@@ -858,6 +898,7 @@ def crawlers_analyze():
             exists.base_url = cfg.get('base_url')
             exists.headers_json = _json.dumps(cfg.get('headers_json') or {})
             exists.params_json = _json.dumps(cfg.get('params_json') or {})
+            exists.dynamic_keys = _json.dumps(cfg.get('dynamic_keys') or [])
             exists.enabled = True
             db.session.commit()
             cid = exists.id
@@ -870,6 +911,7 @@ def crawlers_analyze():
                 base_url=cfg.get('base_url'),
                 headers_json=_json.dumps(cfg.get('headers_json') or {}),
                 params_json=_json.dumps(cfg.get('params_json') or {}),
+                dynamic_keys=_json.dumps(cfg.get('dynamic_keys') or []),
                 enabled=True,
             )
             db.session.add(r)
@@ -882,6 +924,46 @@ def crawlers_analyze():
         return jsonify({'status': 'ok', 'id': cid, 'code': code})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@bp.route('/ai_clean', methods=['GET'])
+@login_required
+def ai_clean_page():
+    engines = db.session.query(AIEngine).filter_by(enabled=True).order_by(AIEngine.created_at.desc()).all()
+    return render_template('admin/ai_clean.html', engines=engines)
+
+@bp.route('/ai_clean/run', methods=['POST'])
+@login_required
+def ai_clean_run():
+    data = request.get_json(silent=True) or {}
+    engine_id = data.get('engine_id')
+    limit = int(data.get('limit') or 10)
+    task = (data.get('task') or 'analyze').strip()
+    if not engine_id:
+        return jsonify({'error': 'missing engine_id'}), 400
+    eng = db.session.get(AIEngine, int(engine_id))
+    if not eng or not eng.enabled:
+        return jsonify({'error': 'engine not available'}), 404
+    from sqlalchemy import text as _text
+    rows = []
+    err = None
+    try:
+        sql = _text('SELECT id, title, content, created_at FROM article_details ORDER BY created_at DESC LIMIT :lim')
+        rs = db.session.execute(sql, {'lim': limit})
+        for r in rs:
+            rows.append({'id': r[0], 'title': r[1], 'content': (r[2] or '')[:1000], 'created_at': str(r[3])})
+    except Exception as e:
+        err = str(e)
+    messages = []
+    sys = '你是一个数据清洗与分析助手，基于提供的文章列表，执行清洗与统计任务。'
+    if task == 'clean':
+        usr = '请针对以下文章列表执行清洗：移除冗余空格、去除明显的乱码段、标记可能的重复标题，并给出清洗建议。用简体中文输出，列出问题与建议，每条尽量简洁。'
+    else:
+        usr = '请对以下文章列表进行分析：统计标题重复情况、内容长度分布、可能的采集异常，并给出改进建议。用简体中文输出。'
+    payload = {'rows': rows, 'error': err}
+    messages.append({'role': 'system', 'content': sys})
+    messages.append({'role': 'user', 'content': f'{usr}\n数据: ' + json.dumps(payload, ensure_ascii=False)})
+    result = _call_ai_engine(eng, messages)
+    return jsonify(result)
 
 @bp.route('/rules/create', methods=['POST'])
 @login_required

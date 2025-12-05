@@ -210,6 +210,14 @@ def analyze_crawler_from_request(source_url: str, headers_raw: str):
     headers = parse_raw_headers(headers_raw)
     name = u.netloc
     code = (u.netloc.replace('.', '_') + '_' + (u.path.strip('/').split('/')[0] or 'root')).lower()
+    # detect dynamic keys
+    dynamic = []
+    KEYWORD_KEYS = {'q','word','kw','keyword','query','search'}
+    PAGE_KEYS = {'pn','page','p','offset'}
+    for k in params.keys():
+        lk = k.lower()
+        if lk in KEYWORD_KEYS or lk in PAGE_KEYS or lk in {'limit'}:
+            dynamic.append(k)
     return {
         'name': name,
         'key': code,
@@ -218,6 +226,7 @@ def analyze_crawler_from_request(source_url: str, headers_raw: str):
         'base_url': base,
         'headers_json': headers,
         'params_json': params,
+        'dynamic_keys': dynamic,
         'enabled': True,
     }
 

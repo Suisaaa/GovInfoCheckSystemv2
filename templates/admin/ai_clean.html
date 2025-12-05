@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="layui-row layui-col-space16">
+  <div class="layui-col-md12">
+    <div class="layui-card">
+      <div class="layui-card-header">AI 数据清洗与分析</div>
+      <div class="layui-card-body">
+        <form class="layui-form" id="clean-form">
+          <div class="layui-form-item">
+            <label class="layui-form-label">引擎</label>
+            <div class="layui-input-inline" style="width:280px">
+              <select id="engine_id" class="layui-input">
+                {% for e in engines %}
+                <option value="{{ e.id }}">{{ e.provider }} · {{ e.model_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <label class="layui-form-label">任务</label>
+            <div class="layui-input-inline" style="width:200px">
+              <select id="task" class="layui-input">
+                <option value="analyze">分析</option>
+                <option value="clean">清洗</option>
+              </select>
+            </div>
+            <label class="layui-form-label">数量</label>
+            <div class="layui-input-inline" style="width:120px">
+              <input type="number" id="limit" value="10" class="layui-input" min="1" max="50">
+            </div>
+            <div class="layui-input-inline">
+              <button type="button" class="layui-btn" id="btn-run">执行</button>
+            </div>
+          </div>
+        </form>
+        <div id="result" style="white-space:pre-wrap; border:1px solid #eee; border-radius:8px; padding:12px; min-height:160px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block page_scripts %}
+<script>
+layui.use(['layer'], function(){
+  var $ = layui.$, layer = layui.layer;
+  $('#btn-run').on('click', function(){
+    var engine_id = $('#engine_id').val();
+    var task = $('#task').val();
+    var limit = parseInt($('#limit').val()||10);
+    $('#result').text('正在执行...');
+    $.ajax({ url: '{{ url_for('admin.ai_clean_run') }}', method: 'POST', contentType: 'application/json', dataType: 'json', data: JSON.stringify({ engine_id: engine_id, task: task, limit: limit }),
+      success: function(res){
+        if(res && res.status==='ok'){
+          var txt = res.text || '';
+          $('#result').text(txt || '[空响应]');
+        }else{
+          $('#result').text((res && (res.message||res.error)) || '调用失败');
+        }
+      }, error: function(xhr){ $('#result').text((xhr.responseJSON && (xhr.responseJSON.message||xhr.responseJSON.error)) || '请求错误'); }
+    });
+  });
+});
+</script>
+{% endblock %}

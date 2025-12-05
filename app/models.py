@@ -76,6 +76,7 @@ class Crawler(db.Model):
     base_url = db.Column(db.String(512))
     headers_json = db.Column(db.Text)
     params_json = db.Column(db.Text)
+    dynamic_keys = db.Column(db.Text)
 
 class CrawlerSource(db.Model):
     id = db.Column(db.Integer, primary_key=True)

@@ -97,6 +97,7 @@ layui.use(['layer'], function(){
         '<td>'+
           '<button class="layui-btn layui-btn-primary layui-btn-sm" data-action="edit" data-id="'+ x.id +'">编辑</button> '
           + '<button class="layui-btn layui-btn-sm" data-action="save" data-id="'+ x.id +'">保存</button> '
+          + '<button class="layui-btn layui-btn-warm layui-btn-sm" data-action="refresh_headers" data-id="'+ x.id +'">刷新Headers</button> '
           + '<button class="layui-btn layui-btn-danger layui-btn-sm" data-action="delete" data-id="'+ x.id +'">删除</button>'+
         '</td>'+
       '</tr>'
@@ -111,6 +112,7 @@ layui.use(['layer'], function(){
             '<input type="text" class="layui-input edit-base_url" data-id="'+ x.id +'" placeholder="Base URL" value="'+ (x.base_url||'') +'" style="margin-bottom:8px">'+
             '<textarea class="layui-textarea edit-headers_json" data-id="'+ x.id +'" placeholder="Headers JSON" style="margin-bottom:8px">'+ (x.headers_json||'') +'</textarea>'+
             '<textarea class="layui-textarea edit-params_json" data-id="'+ x.id +'" placeholder="Params JSON" style="margin-bottom:8px">'+ (x.params_json||'') +'</textarea>'+
+            '<input type="text" class="layui-input edit-dynamic_keys" data-id="'+ x.id +'" placeholder="动态参数键（逗号分隔）" value="'+ (x.dynamic_keys||'') +'" style="margin-bottom:8px">'+
             '<input type="checkbox" class="edit-enabled" data-id="'+ x.id +'" '+ (x.enabled?'checked':'') +' title="启用">'+
           '</div>'+
         '</td>'+
@@ -151,9 +153,20 @@ layui.use(['layer'], function(){
     var base_url = $('.edit-base_url[data-id='+id+']').val();
     var headers_json = $('.edit-headers_json[data-id='+id+']').val();
     var params_json = $('.edit-params_json[data-id='+id+']').val();
+    var dynamic_keys = $('.edit-dynamic_keys[data-id='+id+']').val();
     var enabled = $('.edit-enabled[data-id='+id+']').is(':checked');
-    $.ajax({ url: '{{ url_for('admin.crawlers_update') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ id, name, key, class_path, base_url, headers_json, params_json, enabled }),
+    $.ajax({ url: '{{ url_for('admin.crawlers_update') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ id, name, key, class_path, base_url, headers_json, params_json, dynamic_keys, enabled }),
       success: function(){ layer.msg('保存成功'); load(); }, error: function(xhr){ layer.msg('保存失败: '+ (xhr.responseJSON && (xhr.responseJSON.error||xhr.responseJSON.message) || '')); }
+    });
+  });
+
+  $('#crawler-grid').on('click','button[data-action=refresh_headers]', function(){
+    var id = $(this).data('id');
+    layer.prompt({title:'粘贴原始请求头文本', formType:2}, function(val, idx){
+      $.ajax({ url: '{{ url_for('admin.crawlers_headers_refresh') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ id: id, headers_raw: val }),
+        success: function(){ layer.close(idx); layer.msg('已更新Headers'); load(); },
+        error: function(xhr){ layer.msg((xhr.responseJSON && (xhr.responseJSON.error||xhr.responseJSON.message)) || '请求错误'); }
+      });
     });
   });
 
@@ -176,13 +189,6 @@ layui.use(['layer'], function(){
 
   load();
 });
+
 </script>
 {% endblock %}
-  $('#btn-analyze').on('click', function(){
-    var url = $('#analyze-source-url').val();
-    var raw = $('#analyze-headers-raw').val();
-    $.ajax({ url: '{{ url_for('admin.crawlers_analyze') }}', method: 'POST', contentType: 'application/json', data: JSON.stringify({ source_url: url, headers_raw: raw }),
-      success: function(res){ if(res.status==='ok'){ layer.msg('已生成：'+ res.code); load(); } else { layer.msg(res.error||'分析失败'); } },
-      error: function(xhr){ layer.msg((xhr.responseJSON && (xhr.responseJSON.error||xhr.responseJSON.message)) || '请求错误'); }
-    });
-  });
